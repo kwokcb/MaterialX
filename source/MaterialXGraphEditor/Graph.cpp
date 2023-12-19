@@ -7,6 +7,7 @@
 
 #include <MaterialXRenderGlsl/External/Glad/glad.h>
 #include <MaterialXFormat/Util.h>
+#include <MaterialXFormat/JsonIo.h>
 
 #include <imgui_stdlib.h>
 #include <imgui_node_editor_internal.h>
@@ -136,6 +137,7 @@ Graph::Graph(const std::string& materialFilename,
 
     // Set up filters load and save
     _mtlxFilter.push_back(".mtlx");
+    _mtlxFilter.push_back(".json");
     _geomFilter.push_back(".obj");
     _geomFilter.push_back(".glb");
     _geomFilter.push_back(".gltf");
@@ -232,7 +234,14 @@ mx::DocumentPtr Graph::loadDocument(mx::FilePath filename)
     {
         if (!filename.isEmpty())
         {
-            mx::readFromXmlFile(doc, filename, _searchPath, &readOptions);
+            if (filename.getExtension() == mx::JSON_EXTENSION)
+            {
+                mx::readFromJsonFile(doc, filename, _searchPath);
+            }
+            else
+            {
+                mx::readFromXmlFile(doc, filename, _searchPath, &readOptions);
+            }
             doc->importLibrary(_stdLib);
             std::string message;
             if (!doc->validate(&message))
@@ -4439,12 +4448,12 @@ void Graph::savePosition()
 }
 void Graph::saveDocument(mx::FilePath filePath)
 {
-    if (filePath.getExtension() != mx::MTLX_EXTENSION)
+    if (filePath.getExtension() == mx::EMPTY_STRING)
     {
         filePath.addExtension(mx::MTLX_EXTENSION);
     }
 
-    mx::DocumentPtr writeDoc = _graphDoc;
+   mx::DocumentPtr writeDoc = _graphDoc;
 
     // If requested, create a modified version of the document for saving.
     if (!_saveNodePositions)
@@ -4457,7 +4466,18 @@ void Graph::saveDocument(mx::FilePath filePath)
         }
     }
 
-    mx::XmlWriteOptions writeOptions;
-    writeOptions.elementPredicate = getElementPredicate();
-    mx::writeToXmlFile(writeDoc, filePath, &writeOptions);
+    if (filePath.getExtension() == mx::MTLX_EXTENSION)
+    {
+        mx::XmlWriteOptions writeOptions;
+        writeOptions.elementPredicate = getElementPredicate();
+        mx::writeToXmlFile(writeDoc, filePath, &writeOptions);
+    } 
+    else if (filePath.getExtension() == mx::JSON_EXTENSION)
+    {
+        mx::JsonWriteOptions jsonWriteOptions;
+        jsonWriteOptions.elementPredicate = getElementPredicate();
+        jsonWriteOptions.indent = 1;
+        jsonWriteOptions.indentCharacter = '\t';
+        mx::writeToJsonFile(_graphDoc, filePath.asString(), &jsonWriteOptions);
+    }
 }

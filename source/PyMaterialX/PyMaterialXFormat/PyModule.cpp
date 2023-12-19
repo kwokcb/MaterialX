@@ -8,6 +8,7 @@
 namespace py = pybind11;
 
 void bindPyFile(py::module& mod);
+void bindPyJsonIo(py::module& mod);
 void bindPyXmlIo(py::module& mod);
 void bindPyUtil(py::module& mod);
 
@@ -19,6 +20,7 @@ PYBIND11_MODULE(PyMaterialXFormat, mod)
     PYMATERIALX_IMPORT_MODULE(PyMaterialXCore);
 
     bindPyFile(mod);
+    bindPyJsonIo(mod);
     bindPyXmlIo(mod);
     bindPyUtil(mod);
 }
