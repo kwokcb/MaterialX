@@ -14,6 +14,7 @@ namespace mx = MaterialX;
 
 EMSCRIPTEN_BINDINGS(xmlio)
 {
+    
     ems::constant("MTLX_EXTENSION", mx::MTLX_EXTENSION);
     ems::class_<mx::XmlReadOptions>("XmlReadOptions")
         .constructor<>()
