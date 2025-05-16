@@ -10,6 +10,9 @@
 #include <MaterialXCore/Util.h>
 
 #include <iostream>
+#if defined CURL_INSTALLED
+#include <curl/curl.h>
+#endif
 
 NANOGUI_FORCE_DISCRETE_GPU();
 
@@ -65,6 +68,14 @@ template <class T> void parseToken(std::string token, std::string type, T& res)
     res = value->asA<T>();
 }
 
+// Callback function for libcurl to write downloaded data into a std::string
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+    size_t totalSize = size * nmemb;
+    std::string* str = static_cast<std::string*>(userp);
+    str->append(static_cast<char*>(contents), totalSize);
+    return totalSize;
+}
+
 int main(int argc, char* const argv[])
 {
     std::vector<std::string> tokens;
@@ -103,14 +114,43 @@ int main(int argc, char* const argv[])
     std::string bakeFilename;
     float refresh = 50.0f;
     bool frameTiming = false;
+    std::string materialString;
 
     for (size_t i = 0; i < tokens.size(); i++)
     {
         const std::string& token = tokens[i];
         const std::string& nextToken = i + 1 < tokens.size() ? tokens[i + 1] : mx::EMPTY_STRING;
+#if defined CURL_INSTALLED
+        if (token == "--uri")
+        {
+            CURL* curl;
+            CURLcode res;
+
+            curl = curl_easy_init();
+            if (curl) {
+                curl_easy_setopt(curl, CURLOPT_URL, nextToken.c_str());
+                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+                curl_easy_setopt(curl, CURLOPT_WRITEDATA, &materialString);
+
+                // For HTTPS
+                curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+                curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+
+                res = curl_easy_perform(curl);
+                if (res != CURLE_OK)
+                    std::cerr << "curl_easy_perform() failed: " << curl_easy_strerror(res) << "\n";
+                //else
+                //    std::cout << materialString << "\n";
+
+                curl_easy_cleanup(curl);
+            }
+        }
+        else
+#endif 
         if (token == "--material")
         {
             materialFilename = nextToken;
+
         }
         else if (token == "--mesh")
         {
@@ -277,6 +317,7 @@ int main(int argc, char* const argv[])
     ng::init();
     {
         ng::ref<Viewer> viewer = new Viewer(materialFilename,
+                                            materialString,
                                             meshFilename,
                                             envRadianceFilename,
                                             searchPath,

@@ -123,11 +123,25 @@ endif()
 
 add_executable(MaterialXView ${materialx_source} ${materialx_headers})
 
-target_link_libraries(
-    MaterialXView
+find_package(CURL)
+
+set(_materialxview_libs
     ${MATERIALX_LIBRARIES}
     ${NANOGUI_LIBRARIES}
-    ${NANOGUI_EXTRA_LIBS})
+    ${NANOGUI_EXTRA_LIBS}
+)
+
+if(CURL_FOUND)
+    message(STATUS "libcurl found: ${CURL_INCLUDE_DIRS}, ${CURL_LIBRARIES}")
+    target_include_directories(MaterialXView PRIVATE ${CURL_INCLUDE_DIRS})
+    list(APPEND _materialxview_libs ${CURL_LIBRARIES})
+    target_compile_definitions(MaterialXView PRIVATE CURL_INSTALLED)
+else()
+    message(STATUS "libcurl not found")
+endif()
+
+# Consolidated linking in one place
+target_link_libraries(MaterialXView PRIVATE ${_materialxview_libs})
 
 target_include_directories(
     MaterialXView

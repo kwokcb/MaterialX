@@ -152,6 +152,7 @@ void applyModifiers(mx::DocumentPtr doc, const DocumentModifiers& modifiers)
 //
 
 Viewer::Viewer(const std::string& materialFilename,
+               const std::string& materialString,
                const std::string& meshFilename,
                const std::string& envRadianceFilename,
                const mx::FileSearchPath& searchPath,
@@ -161,6 +162,7 @@ Viewer::Viewer(const std::string& materialFilename,
                const mx::Color3& screenColor) :
     ng::Screen(ng::Vector2i(screenWidth, screenHeight), "MaterialXView",
         true, false, true, true, USE_FLOAT_BUFFER, 4, 0),
+    _materialString(materialString),
     _materialFilename(materialFilename),
     _meshFilename(meshFilename),
     _envRadianceFilename(envRadianceFilename),
@@ -382,7 +384,7 @@ void Viewer::initialize()
     updateGeometrySelections();
 
     // Load the requested material document.
-    loadDocument(_materialFilename, _stdLib);
+    loadDocument(_materialFilename, _materialString, _stdLib);
 
     // Finalize the UI.
     _propertyEditor.setVisible(false);
@@ -598,7 +600,7 @@ void Viewer::createLoadMaterialsInterface(ng::ref<Widget> parent, const std::str
         if (!filename.empty())
         {
             _materialFilename = filename;
-            loadDocument(_materialFilename, _stdLib);
+            loadDocument(_materialFilename, "", _stdLib);
         }
         m_process_events = true;
     });
@@ -623,7 +625,7 @@ void Viewer::createLoadEnvironmentInterface(ng::ref<Widget> parent, const std::s
         {
             _envRadianceFilename = filename;
             loadEnvironmentLight();
-            loadDocument(_materialFilename, _stdLib);
+            loadDocument(_materialFilename, "", _stdLib);
             invalidateShadowMap();
         }
         m_process_events = true;
@@ -1265,7 +1267,7 @@ void Viewer::loadMesh(const mx::FilePath& filename)
     }
 }
 
-void Viewer::loadDocument(const mx::FilePath& filename, mx::DocumentPtr libraries)
+void Viewer::loadDocument(const mx::FilePath& filename, const std::string& buffer, mx::DocumentPtr libraries)
 {
     // Set up read options.
     mx::XmlReadOptions readOptions;
@@ -1307,7 +1309,15 @@ void Viewer::loadDocument(const mx::FilePath& filename, mx::DocumentPtr librarie
     {
         // Load source document.
         mx::DocumentPtr doc = mx::createDocument();
-        mx::readFromXmlFile(doc, filename, _searchPath, &readOptions);
+        if (!buffer.empty())
+        {
+            mx::readFromXmlString(doc, buffer, _searchPath, nullptr);
+        }
+        else
+        {
+            mx::readFromXmlFile(doc, filename, _searchPath, &readOptions);
+            this->_materialString = mx::writeToXmlString(doc);
+        }
         _materialSearchPath = mx::getSourceSearchPath(doc);
 
         // Store data library reference.
@@ -1861,7 +1871,7 @@ bool Viewer::keyboard_event(int key, int scancode, int action, int modifiers)
         {
             loadStandardLibraries();
         }
-        loadDocument(filename, _stdLib);
+        loadDocument(filename, _materialString, _stdLib);
         return true;
     }
 

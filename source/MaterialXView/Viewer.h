@@ -36,6 +36,7 @@ class Viewer : public ng::Screen
     friend class MetalRenderPipeline;
   public:
     Viewer(const std::string& materialFilename,
+           const std::string& materialString,
            const std::string& meshFilename,
            const std::string& envRadianceFilename,
            const mx::FileSearchPath& searchPath,
@@ -240,7 +241,7 @@ class Viewer : public ng::Screen
     void loadMesh(const mx::FilePath& filename);
     void loadEnvironmentLight();
     void applyDirectLights(mx::DocumentPtr doc);
-    void loadDocument(const mx::FilePath& filename, mx::DocumentPtr libraries);
+    void loadDocument(const mx::FilePath& filename, const std::string& buffer, mx::DocumentPtr libraries);
     void reloadShaders();
     void loadStandardLibraries();
     void saveShaderSource(mx::GenContext& context);
@@ -322,6 +323,7 @@ class Viewer : public ng::Screen
     RenderPipelinePtr _renderPipeline;
 
     mx::FilePath _materialFilename;
+    std::string _materialString;
     mx::FileSearchPath _materialSearchPath;
     mx::FilePath _meshFilename;
     mx::FilePath _envRadianceFilename;
