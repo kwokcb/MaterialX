@@ -19,6 +19,7 @@ NANOGUI_FORCE_DISCRETE_GPU();
 const std::string options =
     " Options: \n"
     "    --material [FILENAME]          Specify the filename of the MTLX document to be displayed in the viewer\n"
+    "    --uri [URL]                    Specify the URL of the MTLX document to be downloaded and displayed in the viewer (requires libcurl)\n"
     "    --mesh [FILENAME]              Specify the filename of the OBJ mesh to be displayed in the viewer\n"
     "    --meshRotation [VECTOR3]       Specify the rotation of the displayed mesh as three comma-separated floats, representing rotations in degrees about the X, Y, and Z axes (defaults to 0,0,0)\n"
     "    --meshScale [FLOAT]            Specify the uniform scale of the displayed mesh\n"
@@ -78,6 +79,11 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
 
 int main(int argc, char* const argv[])
 {
+#if defined CURL_INSTALLED
+    // Initialize libcurl globally for thread safety
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+#endif
+
     std::vector<std::string> tokens;
     for (int i = 1; i < argc; i++)
     {
@@ -124,10 +130,10 @@ int main(int argc, char* const argv[])
         if (token == "--uri")
         {
             CURL* curl;
-            CURLcode res;
-
+            CURLcode res;            
             curl = curl_easy_init();
-            if (curl) {
+            if (curl) 
+            {
                 curl_easy_setopt(curl, CURLOPT_URL, nextToken.c_str());
                 curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
                 curl_easy_setopt(curl, CURLOPT_WRITEDATA, &materialString);
@@ -135,6 +141,10 @@ int main(int argc, char* const argv[])
                 // For HTTPS
                 curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
                 curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+                
+                // Set timeout settings for network requests
+                curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+                curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
 
                 res = curl_easy_perform(curl);
                 if (res != CURLE_OK)
@@ -364,6 +374,11 @@ int main(int argc, char* const argv[])
         ng::mainloop(refresh);
     }
     ng::shutdown();
+
+#if defined CURL_INSTALLED
+    // Cleanup libcurl globally
+    curl_global_cleanup();
+#endif
 
     return 0;
 }
