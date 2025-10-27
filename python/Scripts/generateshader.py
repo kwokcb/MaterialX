@@ -5,6 +5,7 @@ The currently supported target languages are GLSL, ESSL, MSL, OSL, and MDL.
 '''
 
 import sys, os, argparse, subprocess
+import re, locale
 
 import MaterialX as mx
 import MaterialX.PyMaterialXGenGlsl as mx_gen_glsl
@@ -13,34 +14,60 @@ import MaterialX.PyMaterialXGenMsl as mx_gen_msl
 import MaterialX.PyMaterialXGenOsl as mx_gen_osl
 import MaterialX.PyMaterialXGenShader as mx_gen_shader
 
+# Ensure printing never raises UnicodeEncodeError in CI/PowerShell:
+try:
+    # Change stdout/stderr behavior to replace unencodable chars
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    # ignore on platforms without reconfigure
+    pass
+
+def safe_write(s):
+    """Write string to stdout using the terminal encoding, replacing unencodable chars."""
+    try:
+        enc = sys.stdout.encoding or locale.getpreferredencoding(False) or 'utf-8'
+        b = s.encode(enc, errors='replace')
+        # Use buffer to avoid Python trying to re-encode when printing
+        sys.stdout.buffer.write(b)
+        sys.stdout.buffer.write(b'\n')
+    except Exception:
+        # Fallback to a safe printable form
+        print(s.encode('utf-8', errors='replace').decode('utf-8', errors='replace'))
+
 def validateCode(sourceCodeFile, codevalidator, codevalidatorArgs):
-    if codevalidator:
-        cmd = codevalidator.split()
-        cmd.append(sourceCodeFile)
-        if codevalidatorArgs:
-            cmd.append(codevalidatorArgs)
-        cmd_flatten ='----- Run Validator: '
-        for c in cmd:
-            cmd_flatten += c + ' '
-        print(cmd_flatten)
-        try:
-            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=30)
-            result = output.decode(encoding='utf-8')
-            # Return empty string on success, even if there's output
-            if "Validation successful" in result:
-                return ""
-            return result
-        except subprocess.CalledProcessError as out:
-            print(f"--- Validator returned error code: {out.returncode}")
-            # Encode the output to avoid UnicodeEncodeError
-            print("--- Error log: ", out.output.decode('utf-8', errors='replace'))
-            return (out.output.decode(encoding='utf-8', errors='replace'))
-        except subprocess.TimeoutExpired:
-            print(f"--- Validator timeout for: {sourceFile}")
-            return "ERROR: Validator timeout"
-        except Exception as e:
-            print(f"--- Validator exception: {e}")
-            return f"ERROR: {str(e)}"
+    if not codevalidator:
+        return ""
+
+    cmd = codevalidator.split()
+    cmd.append(sourceCodeFile)
+    if codevalidatorArgs:
+        cmd.append(codevalidatorArgs)
+    print('----- Run Validator: ' + ' '.join(cmd))
+
+    # Use environment vars to request no color/graphics from the validator
+    env = os.environ.copy()
+    env.update({'NO_COLOR': '1', 'TERM': 'dumb'})
+
+    try:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=30, env=env)
+        text = keep_ansi_and_ascii(output)
+        if "Validation successful" in text or text == "":
+            return ""
+        return text
+    except subprocess.CalledProcessError as out:
+        print(f"--- Validator returned error code: {out.returncode}")
+        raw = out.output if hasattr(out, 'output') and out.output is not None else b''
+        text = keep_ansi_and_ascii(raw)
+        print('--- Error log:')
+        print(text)
+        return text
+    except subprocess.TimeoutExpired:
+        print(f"--- Validator timeout for: {sourceFile}")
+        return "ERROR: Validator timeout"
+    except Exception as e:
+        print(f"--- Validator exception: {e}")
+        return f"ERROR: {str(e)}"
     return ""
 
 def getMaterialXFiles(rootPath):
@@ -54,6 +81,24 @@ def getMaterialXFiles(rootPath):
         filelist.append( rootPath )
 
     return filelist
+
+def keep_ansi_and_ascii(b):
+    """Decode bytes, preserve ANSI escape sequences, and drop other non-ASCII glyphs."""
+    if not b:
+        return ""
+    text = b.decode('utf-8', errors='replace')
+    ansi_regex = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+    seqs = []
+    def _repl(m):
+        seqs.append(m.group(0))
+        return f'__ANSI_SEQ_{len(seqs)-1}__'
+    temp = ansi_regex.sub(_repl, text)
+    # keep printable ASCII plus newline/tab/carriage return, drop other chars
+    temp = ''.join(ch for ch in temp if ch in '\r\n\t' or (32 <= ord(ch) <= 126))
+    # restore ANSI sequences
+    for i, seq in enumerate(seqs):
+        temp = temp.replace(f'__ANSI_SEQ_{i}__', seq)
+    return '\n'.join(line.rstrip() for line in temp.splitlines())
 
 def main():
     parser = argparse.ArgumentParser(description='Generate shader code for each renderable element in a MaterialX document or folder.')
@@ -202,7 +247,8 @@ def main():
                 if errors != "":
                     print("--- Validation failed for element: ", elemName)
                     print("----------------------------")
-                    print('--- Error log: ', errors)
+                    safe_write('--- Error log:')
+                    safe_write(errors)
                     print("----------------------------")
                     failedShaders += (elemName + ' ')
                 else:
