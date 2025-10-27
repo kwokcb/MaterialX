@@ -32,9 +32,11 @@ def validateCode(sourceCodeFile, codevalidator, codevalidatorArgs):
             return result
         except subprocess.CalledProcessError as out:
             print(f"--- Validator returned error code: {out.returncode}")
-            return (out.output.decode(encoding='utf-8'))
+            # Encode the output to avoid UnicodeEncodeError
+            print("--- Error log: ", out.output.decode('utf-8', errors='replace'))
+            return (out.output.decode(encoding='utf-8', errors='replace'))
         except subprocess.TimeoutExpired:
-            print(f"--- Validator timeout for: {sourceCodeFile}")
+            print(f"--- Validator timeout for: {sourceFile}")
             return "ERROR: Validator timeout"
         except Exception as e:
             print(f"--- Validator exception: {e}")
