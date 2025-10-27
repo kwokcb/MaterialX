@@ -24,10 +24,21 @@ def validateCode(sourceCodeFile, codevalidator, codevalidatorArgs):
             cmd_flatten += c + ' '
         print(cmd_flatten)
         try:
-            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-            return output.decode(encoding='utf-8')
-        except subprocess.CalledProcessError as out:                                                                                                   
+            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=30)
+            result = output.decode(encoding='utf-8')
+            # Return empty string on success, even if there's output
+            if "Validation successful" in result:
+                return ""
+            return result
+        except subprocess.CalledProcessError as out:
+            print(f"--- Validator returned error code: {out.returncode}")
             return (out.output.decode(encoding='utf-8'))
+        except subprocess.TimeoutExpired:
+            print(f"--- Validator timeout for: {sourceCodeFile}")
+            return "ERROR: Validator timeout"
+        except Exception as e:
+            print(f"--- Validator exception: {e}")
+            return f"ERROR: {str(e)}"
     return ""
 
 def getMaterialXFiles(rootPath):
@@ -69,6 +80,8 @@ def main():
                 libraryFolders.append(library)
     libraryFolders.extend(mx.getDefaultDataLibraryFolders())
     mx.loadLibraries(libraryFolders, searchPath, stdlib)
+
+    failedShaders = ""
 
     # Generate shaders for each input document.
     for inputFilename in getMaterialXFiles(opts.inputFilename):        
@@ -146,18 +159,19 @@ def main():
             pathPrefix = os.path.dirname(os.path.abspath(inputFilename))
         print('- Shader output path: ' + pathPrefix)
 
-        failedShaders = ""
         for elem in mx_gen_shader.findRenderableElements(doc):
             elemName = elem.getName()
             print('-- Generate code for element: ' + elemName)
             elemName = mx.createValidName(elemName)
-            shader = shadergen.generate(elemName, elem, context)        
+            shader = shadergen.generate(elemName, elem, context)
             if shader:
                 # Use extension of .vert and .frag as it's type is
                 # recognized by glslangValidator
                 if gentarget in ['glsl', 'essl', 'vulkan', 'msl', 'wgsl']:
                     pixelSource = shader.getSourceCode(mx_gen_shader.PIXEL_STAGE)
                     filename = pathPrefix + "/" + shader.getName() + "." + gentarget + ".frag"
+                    if gentarget == 'wgsl':
+                        filename += '.glsl'
                     print('--- Wrote pixel shader to: ' + filename)
                     file = open(filename, 'w+')
                     file.write(pixelSource)
@@ -166,6 +180,8 @@ def main():
 
                     vertexSource = shader.getSourceCode(mx_gen_shader.VERTEX_STAGE)
                     filename = pathPrefix + "/" + shader.getName() + "." + gentarget + ".vert"
+                    if gentarget == 'wgsl':
+                        filename += '.glsl'
                     print('--- Wrote vertex shader to: ' + filename)
                     file = open(filename, 'w+')
                     file.write(vertexSource)
@@ -194,8 +210,9 @@ def main():
                 print("--- Validation failed for element:", elemName)
                 failedShaders += (elemName + ' ')
 
-        if failedShaders != "":
-            sys.exit(-1)
+    if failedShaders != "":
+        print("Following shaders failed validation: ", failedShaders)
+        sys.exit(-1)
 
 if __name__ == '__main__':
     main()

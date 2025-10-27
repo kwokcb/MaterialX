@@ -216,6 +216,15 @@ jobs:
         python Scripts/generateshader.py ../resources/Materials/Examples/StandardSurface --target msl
       working-directory: python
 
+    - name: Install Naga Validator (Windows)
+      if: matrix.test_shaders == 'ON' && runner.os == 'Windows'
+      run: |
+        choco install rustup.install -y
+        refreshenv
+        rustup default stable
+        cargo install naga-cli
+        naga --version
+
     - name: Shader Validation Tests (Windows)
       if: matrix.test_shaders == 'ON' && runner.os == 'Windows'
       run: |
@@ -224,7 +233,7 @@ jobs:
         python python/Scripts/generateshader.py resources/Materials/Examples --target glsl --validator C:/vcpkg/installed/x64-windows-release/tools/glslang/glslangValidator.exe
         python python/Scripts/generateshader.py resources/Materials/Examples/StandardSurface --target essl --validator C:/vcpkg/installed/x64-windows-release/tools/glslang/glslangValidator.exe
         python python/Scripts/generateshader.py resources/Materials/Examples/StandardSurface --target vulkan --validator C:/vcpkg/installed/x64-windows-release/tools/glslang/glslangValidator.exe
-        python python/Scripts/generateshader.py resources/Materials/Examples/StandardSurface --target wgsl --validator "C:/vcpkg/installed/x64-windows-release/tools/glslang/glslangValidator.exe --target-env vulkan1.3 --quiet"
+        python python/Scripts/generateshader.py resources/Materials/Examples/StandardSurface --target wgsl --validator "naga"
 
     - name: Shader Validation Tests (MacOS)
       if: matrix.test_shaders == 'ON' && runner.os == 'macOS'
