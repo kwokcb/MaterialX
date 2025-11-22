@@ -12,6 +12,7 @@ import MaterialX.PyMaterialXGenGlsl as mx_gen_glsl
 import MaterialX.PyMaterialXGenMdl as mx_gen_mdl
 import MaterialX.PyMaterialXGenMsl as mx_gen_msl
 import MaterialX.PyMaterialXGenOsl as mx_gen_osl
+import MaterialX.PyMaterialXGenSlang as mx_gen_slang
 import MaterialX.PyMaterialXGenShader as mx_gen_shader
 
 # Ensure printing never raises UnicodeEncodeError in CI/PowerShell:
@@ -162,6 +163,8 @@ def main():
             shadergen = mx_gen_glsl.WgslShaderGenerator.create()
         elif gentarget == 'msl':
             shadergen = mx_gen_msl.MslShaderGenerator.create()
+        elif gentarget == 'slang':
+            shadergen = mx_gen_slang.SlangShaderGenerator.create()
         else:
             shadergen = mx_gen_glsl.GlslShaderGenerator.create()
                 
