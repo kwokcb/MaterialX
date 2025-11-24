@@ -51,6 +51,7 @@ option(MATERIALX_BUILD_OCIO "Build OpenColorIO support for shader generators." O
 option(MATERIALX_BUILD_TESTS "Build unit tests." OFF)
 option(MATERIALX_BUILD_BENCHMARK_TESTS "Build benchmark tests." OFF)
 option(MATERIALX_BUILD_OSOS "Build OSL .oso's of standard library shaders for the OSL Network generator" OFF)
+option(MATERIALX_BUILD_SLX "Build the ShaderLanguageX module for MaterialX." ON)
 
 option(MATERIALX_BUILD_SHARED_LIBS "Build MaterialX libraries as shared rather than static." OFF)
 option(MATERIALX_BUILD_DATA_LIBRARY "Build generated products from the MaterialX data library." OFF)
@@ -91,6 +92,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "iOS" OR CMAKE_SYSTEM_NAME MATCHES "tvOS" OR CMAKE
     set(MATERIALX_BUILD_GEN_SLANG OFF)
     set(MATERIALX_BUILD_OSOS OFF)
     set(MATERIALX_BUILD_TESTS OFF)
+    set(MATERIALX_BUILD_SLX OFF)
 endif()
 
 # Apple framework handling
@@ -541,6 +543,10 @@ if(MATERIALX_BUILD_RENDER)
     if(MATERIALX_INSTALL_RESOURCES AND NOT SKBUILD)
         add_subdirectory(resources)
     endif()
+endif()
+
+if (MATERIALX_BUILD_SLX)
+    add_subdirectory(source/MaterialXSLX)
 endif()
 
 # Add test subdirectory

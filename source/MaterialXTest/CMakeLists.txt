@@ -66,6 +66,11 @@ if(MATERIALX_BUILD_GEN_GLSL OR MATERIALX_BUILD_GEN_OSL OR MATERIALX_BUILD_GEN_MD
   endif()
 endif()
 
+if (MATERIALX_BUILD_SLX)
+  add_subdirectory(MaterialXSLX)
+  target_link_libraries(MaterialXTest MaterialXSLX)
+endif()
+
 if(MATERIALX_BUILD_RENDER)
   add_subdirectory(MaterialXRender)
   target_link_libraries(MaterialXTest MaterialXRender)
