@@ -1,4 +1,3 @@
-
 //
 // Copyright Contributors to the MaterialX Project
 // SPDX-License-Identifier: Apache-2.0
@@ -15,13 +14,8 @@
 
 MATERIALX_NAMESPACE_BEGIN
 
-/// @brief Constructor for SLXDecompiler.
 SLXDecompiler::SLXDecompiler() {}
-
-/// @brief Destructor for SLXDecompiler.
 SLXDecompiler::~SLXDecompiler() {}
-
-
 
 // Helper: Map node category to SLX operator/function
 static std::string mapCategoryToSLX(const std::string& category)
@@ -46,33 +40,53 @@ static std::string mapCategoryToSLX(const std::string& category)
 }
 
 
-
-
 // Helper: Convert node to SLXExpressionPtr (AST)
-static SLXExpressionPtr nodeToSLXExpression(const MXNodeWrapperPtr& nodeWrapper)
+static SLXExpressionPtr nodeToSLXExpression(const MXNodeWrapperPtr& nodeWrapper, bool useOutputArguments)
 {
     const std::string& category = nodeWrapper->getCategory();
-    std::vector<SLXExpressionPtr> args;
+    std::vector<SLXFunctionCallExpression::Argument> args;
+    // Gather input arguments
     for (const auto& inputWrapper : nodeWrapper->getInputs())
     {
         MaterialX::NodePtr inputNode = inputWrapper->getConnectedNode();
+        SLXExpressionPtr expr;
         if (inputNode)
         {
             MXNodeWrapperPtr inputNodeWrapper = std::make_shared<MXNodeWrapper>(inputNode);
-            args.push_back(nodeToSLXExpression(inputNodeWrapper));
+            expr = nodeToSLXExpression(inputNodeWrapper, useOutputArguments);
         }
         else if (inputWrapper->hasValue())
         {
-            args.push_back(SLXLiteralExpression::create(inputWrapper->getValueString(), inputWrapper->getType()));
+            expr = SLXLiteralExpression::create(inputWrapper->getValueString(), inputWrapper->getType());
         }
         else
         {
-            args.push_back(SLXLiteralExpression::create("/*unconnected*/", inputWrapper->getType()));
+            expr = SLXLiteralExpression::create("/*unconnected*/", inputWrapper->getType());
         }
+        std::string argName = inputWrapper->getName();
+        args.emplace_back(expr, argName);
     }
-    // Arithmetic, logic, comparison, unary
+    // Optionally gather output arguments
+    if (useOutputArguments) {
+        std::vector<SLXFunctionCallExpression::Argument> outputArgs;
+        for (const auto& outputWrapper : nodeWrapper->getOutputs()) {
+            std::string outName = outputWrapper->getName();
+            std::string outType = outputWrapper->getType();
+            SLXExpressionPtr outExpr = SLXIdentifierExpression::create(nodeWrapper->getName() + "_" + outName, outType);
+            outputArgs.emplace_back(outExpr, outName);
+        }
+        // Prepend output arguments
+        args.insert(args.begin(), outputArgs.begin(), outputArgs.end());
+    }
+    // Handle macro expansion (placeholder, extend as needed)
+    // Example: if (category == "macro" && nodeWrapper->hasMacro())
+    //     return SLXIdentifierExpression::create(nodeWrapper->getMacroName(), nodeWrapper->getType());
+
+    // Handle type conversions (placeholder, extend as needed)
+    if (category == "convert" && args.size() == 1)
+        return SLXFunctionCallExpression::create(nodeWrapper->getType(), args, nodeWrapper->getType());
     if (category == "constant" && !args.empty())
-        return args[0];
+        return args[0].expr;
     if (category == "extract" && args.size() >= 2)
         return SLXFunctionCallExpression::create("extract", args, nodeWrapper->getType());
     if (category == "switch" && args.size() >= 2)
@@ -90,7 +104,6 @@ static SLXExpressionPtr nodeToSLXExpression(const MXNodeWrapperPtr& nodeWrapper)
     // Fallback: function call
     return SLXFunctionCallExpression::create(category, args, nodeWrapper->getType());
 }
-
 /// @brief Helper to recursively decompile a node and its inputs.
 /// @param node The node to decompile.
 /// @param decompiledNodes Set of already decompiled nodes.
@@ -99,9 +112,11 @@ static SLXExpressionPtr nodeToSLXExpression(const MXNodeWrapperPtr& nodeWrapper)
 
 // Helper: Convert node to SLXStatementPtr (AST)
 
-static SLXStatementPtr nodeToSLXStatement(const MXNodeWrapperPtr& nodeWrapper)
+
+// Helper: Convert node to SLXStatementPtr (AST)
+static SLXStatementPtr nodeToSLXStatement(const MXNodeWrapperPtr& nodeWrapper, bool useOutputArguments)
 {
-    SLXExpressionPtr expr = nodeToSLXExpression(nodeWrapper);
+    SLXExpressionPtr expr = nodeToSLXExpression(nodeWrapper, useOutputArguments);
     if (nodeWrapper->getType() == "void")
     {
         return SLXExpressionStatement::create(expr);
@@ -113,7 +128,8 @@ static SLXStatementPtr nodeToSLXStatement(const MXNodeWrapperPtr& nodeWrapper)
 }
 
 // Recursively build AST for all nodes
-static void buildAST(const MXNodeWrapperPtr& nodeWrapper, std::set<MaterialX::NodePtr>& visited, std::vector<SLXStatementPtr>& statements)
+static void buildAST(const MXNodeWrapperPtr& nodeWrapper, std::set<MaterialX::NodePtr>& visited, std::vector<SLXStatementPtr>& statements,
+    bool useOutputArguments)
 {
     MaterialX::NodePtr node = nodeWrapper->getNode();
     if (!node || visited.count(node)) return;
@@ -124,11 +140,11 @@ static void buildAST(const MXNodeWrapperPtr& nodeWrapper, std::set<MaterialX::No
         if (inputNode)
         {
             MXNodeWrapperPtr inputNodeWrapper = std::make_shared<MXNodeWrapper>(inputNode);
-            buildAST(inputNodeWrapper, visited, statements);
+            buildAST(inputNodeWrapper, visited, statements, useOutputArguments);
         }
     }
     // Build statement for this node
-    SLXStatementPtr stmt = nodeToSLXStatement(nodeWrapper);
+    SLXStatementPtr stmt = nodeToSLXStatement(nodeWrapper, useOutputArguments);
     if (stmt)
         statements.push_back(stmt);
     visited.insert(node);
@@ -147,12 +163,13 @@ string SLXDecompiler::decompile(const DocumentPtr& doc)
     std::set<MaterialX::NodePtr> visited;
     std::vector<SLXStatementPtr> statements;
     for (const MXNodeWrapperPtr& nodeWrapper : docWrapper->getNodes())
-        buildAST(nodeWrapper, visited, statements);
+        buildAST(nodeWrapper, visited, statements, _useOutputArguments);
     // Traverse AST and emit SLX code
     std::ostringstream slx;
+    int indent = 0;
     for (const SLXStatementPtr& stmt : statements)
     {
-        if (stmt) stmt->emitSLX(slx);
+        if (stmt) stmt->emitSLX(slx, indent);
     }
     return slx.str();
 }

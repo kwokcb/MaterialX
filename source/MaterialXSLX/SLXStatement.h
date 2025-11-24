@@ -26,7 +26,7 @@ class SLXStatement
 public:
     virtual ~SLXStatement() = default;
     virtual std::string getKind() const = 0;
-    virtual void emitSLX(std::ostringstream& slx) const = 0;
+    virtual void emitSLX(std::ostringstream& slx, int indent = 0) const = 0;
 };
 
 class SLXAssignmentStatement;
@@ -42,9 +42,10 @@ public:
         return std::make_shared<SLXAssignmentStatement>(type, name, expr);
     }
     std::string getKind() const override { return "assignment"; }
-    void emitSLX(std::ostringstream& slx) const override
+    void emitSLX(std::ostringstream& slx, int indent = 0) const override
     {
-        slx << _type << " " << _name << " = ";
+        std::string pad(indent, ' ');
+        slx << pad << _type << " " << _name << " = ";
         if (_expr) _expr->emitSLX(slx);
         slx << ";\n";
     }
@@ -66,8 +67,10 @@ public:
         return std::make_shared<SLXExpressionStatement>(expr);
     }
     std::string getKind() const override { return "expression"; }
-    void emitSLX(std::ostringstream& slx) const override
+    void emitSLX(std::ostringstream& slx, int indent = 0) const override
     {
+        std::string pad(indent, ' ');
+        slx << pad;
         if (_expr) _expr->emitSLX(slx);
         slx << ";\n";
     }

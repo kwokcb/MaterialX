@@ -44,21 +44,20 @@ using SLXFunctionCallExpressionPtr = std::shared_ptr<SLXFunctionCallExpression>;
 /// @brief Represents a function or node call in SLX.
 class SLXFunctionCallExpression : public SLXExpression {
 public:
-    /// @brief Construct a function call expression.
-    SLXFunctionCallExpression(const std::string& name, const std::vector<SLXExpressionPtr>& args, const std::string& type = "");
-    /// @brief Factory method to create a function call expression.
-    static SLXFunctionCallExpressionPtr create(const std::string& name, const std::vector<SLXExpressionPtr>& args, const std::string& type = "");
-    /// @brief Get the type of the expression.
+    struct Argument {
+        std::string name; // empty if positional
+        SLXExpressionPtr expr;
+        Argument(const SLXExpressionPtr& e, const std::string& n = "") : name(n), expr(e) {}
+    };
+    SLXFunctionCallExpression(const std::string& name, const std::vector<Argument>& args, const std::string& type = "");
+    static SLXFunctionCallExpressionPtr create(const std::string& name, const std::vector<Argument>& args, const std::string& type = "");
     std::string getType() const override;
-    /// @brief Get the arguments of the function call.
-    const std::vector<SLXExpressionPtr>& getArguments() const;
-    /// @brief Get the function name.
+    const std::vector<Argument>& getArguments() const;
     std::string getName() const;
-    /// @brief Emit SLX code for this function call.
     void emitSLX(std::ostringstream& slx) const override;
 private:
     std::string _name;
-    std::vector<SLXExpressionPtr> _arguments;
+    std::vector<Argument> _arguments;
     std::string _type;
 };
 

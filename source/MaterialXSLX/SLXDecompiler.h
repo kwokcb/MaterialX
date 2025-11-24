@@ -1,4 +1,3 @@
-
 //
 // Copyright Contributors to the MaterialX Project
 // SPDX-License-Identifier: Apache-2.0
@@ -19,7 +18,7 @@ MATERIALX_NAMESPACE_BEGIN
 /// @brief Converts a MaterialX Document to SLX source code.
 class MX_SLX_API SLXDecompiler
 {
-public:
+  public:
     /// @brief Constructor for SLXDecompiler.
     SLXDecompiler();
 
@@ -30,6 +29,13 @@ public:
     /// @param doc The MaterialX DocumentPtr to decompile.
     /// @return The SLX source code as a string.
     string decompile(const DocumentPtr& doc);
+
+    /// @brief Option to enable output arguments in function calls.
+    void setUseOutputArguments(bool enable) { _useOutputArguments = enable; }
+    bool getUseOutputArguments() const { return _useOutputArguments; }
+
+  private:
+    bool _useOutputArguments = false;
 };
 
 MATERIALX_NAMESPACE_END

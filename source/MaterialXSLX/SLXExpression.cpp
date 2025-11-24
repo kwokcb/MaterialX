@@ -8,7 +8,8 @@
 MATERIALX_NAMESPACE_BEGIN
 
 // Only implement missing static factory methods to resolve linker errors
-SLXFunctionCallExpressionPtr SLXFunctionCallExpression::create(const std::string& name, const std::vector<SLXExpressionPtr>& args, const std::string& type)
+
+SLXFunctionCallExpressionPtr SLXFunctionCallExpression::create(const std::string& name, const std::vector<SLXFunctionCallExpression::Argument>& args, const std::string& type)
 {
     return std::make_shared<SLXFunctionCallExpression>(name, args, type);
 }
@@ -16,6 +17,11 @@ SLXFunctionCallExpressionPtr SLXFunctionCallExpression::create(const std::string
 SLXLiteralExpressionPtr SLXLiteralExpression::create(const std::string& value, const std::string& type)
 {
     return std::make_shared<SLXLiteralExpression>(value, type);
+}
+
+SLXIdentifierExpressionPtr SLXIdentifierExpression::create(const std::string& name, const std::string& type)
+{
+    return std::make_shared<SLXIdentifierExpression>(name, type);
 }
 
 MATERIALX_NAMESPACE_END
@@ -30,7 +36,8 @@ MATERIALX_NAMESPACE_BEGIN
 
 
 /// @brief Construct a function call expression.
-SLXFunctionCallExpression::SLXFunctionCallExpression(const std::string& name, const std::vector<SLXExpressionPtr>& args, const std::string& type)
+
+SLXFunctionCallExpression::SLXFunctionCallExpression(const std::string& name, const std::vector<Argument>& args, const std::string& type)
     : _name(name), _arguments(args), _type(type) {}
 
 /// @brief Get the type of the function call expression.
@@ -40,14 +47,18 @@ std::string SLXFunctionCallExpression::getType() const { return _type; }
 std::string SLXFunctionCallExpression::getName() const { return _name; }
 
 /// @brief Get the arguments of the function call.
-const std::vector<SLXExpressionPtr>& SLXFunctionCallExpression::getArguments() const { return _arguments; }
+const std::vector<SLXFunctionCallExpression::Argument>& SLXFunctionCallExpression::getArguments() const { return _arguments; }
 
 /// @brief Emit SLX code for this function call.
 void SLXFunctionCallExpression::emitSLX(std::ostringstream& slx) const {
     slx << _name << "(";
     for (size_t i = 0; i < _arguments.size(); ++i) {
         if (i > 0) slx << ", ";
-        if (_arguments[i]) _arguments[i]->emitSLX(slx);
+        const auto& arg = _arguments[i];
+        if (!arg.name.empty()) {
+            slx << arg.name << "=";
+        }
+        if (arg.expr) arg.expr->emitSLX(slx);
     }
     slx << ")";
 }

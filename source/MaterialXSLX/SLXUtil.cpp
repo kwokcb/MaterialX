@@ -1,8 +1,5 @@
 #include <MaterialXSLX/SLXUtil.h>
 #include <MaterialXSLX/SLXExpression.h>
-#include <MaterialXSLX/SLXLiteralExpression.h>
-#include <MaterialXSLX/SLXIdentifierExpression.h>
-#include <MaterialXSLX/SLXFunctionCallExpression.h>
 #include <MaterialXSLX/Argument.h>
 #include <MaterialXCore/Document.h>
 #include <sstream>
