@@ -8,7 +8,7 @@
 
 MATERIALX_NAMESPACE_BEGIN
 
-void SLXParser::parseStatement(MaterialX::DocumentPtr doc)
+void SLXParser::parseStatement(MaterialX::DocumentPtr /*doc*/)
 {
     // Example: parse a single expression and print its type
         SLXExpressionPtr expr = parseExpression(); // Updated to use SLXExpressionPtr

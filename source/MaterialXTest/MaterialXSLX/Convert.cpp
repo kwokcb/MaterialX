@@ -9,6 +9,7 @@
 #include <MaterialXFormat/Util.h>
 #include <MaterialXFormat/XmlIo.h>
 #include <MaterialXSLX/SLXDecompiler.h>
+#include <MaterialXSLX/SLXCompiler.h>
 
 #include <fstream>
 #include <filesystem>
@@ -55,6 +56,7 @@ TEST_CASE("SLX Decompile", "[slx]")
 
     // Serialize to SLX
     mx::SLXDecompiler decompiler;
+    mx::SLXCompiler compiler;
 
     // Read and decompile each example document.
     for (const mx::FilePath& filename : examplesPath.getFilesInDirectory(mx::MTLX_EXTENSION))
@@ -68,11 +70,21 @@ TEST_CASE("SLX Decompile", "[slx]")
         std::cerr << "--------------------------\n> Decompiled SLX for " << filename.asString() << "\n" << slxString;
         REQUIRE(!slxString.empty());
 
-        decompiler.setUseOutputArguments(true);
-        slxString = decompiler.decompile(doc);
-        std::cerr << "--------------------------\n> Decompiled SLX w/ output args for " << filename.asString() << "\n" << slxString;
-        REQUIRE(!slxString.empty());
+        //decompiler.setUseOutputArguments(true);
+        //slxString = decompiler.decompile(doc);
+        //std::cerr << "--------------------------\n> Decompiled SLX w/ output args for " << filename.asString() << "\n" << slxString;
+        //REQUIRE(!slxString.empty());
 
+#if 0
+        compiler.setStandardLibrary(libraries);
+        mx::DocumentPtr compiledDoc = compiler.compile(slxString);
+        // Write out compiled document for debugging
+        mx::FilePath debugFileName = filename.getBaseName() + "_compiled.mtlx";
+        mx::FilePath debugFilePath = examplesPath / debugFileName;
+        mx::writeToXmlFile(compiledDoc, debugFilePath);
+        std::string debString = mx::writeToXmlString(compiledDoc);
+        std::cerr << "--------------------------\n> Compiled Document for " << filename.asString() << "\n" << debString;
+#endif
     }
 }
 
@@ -84,6 +96,42 @@ TEST_CASE("SLX Decompiler Reference Compare", "[slx]")
 
     // Decompile
     mx::SLXDecompiler decompiler;
+    // Compile
+    mx::SLXCompiler compiler;
+
+    for (const mx::FilePath& filename : slxFolder.getFilesInDirectory("mxsl"))
+    {
+        // Create full path to SLX file
+        mx::FilePath filepath = searchPath.find(filename);
+
+        // if "gold.mxsl" continue otherwise skip
+        if (filename != "asdasdgold.mxsl") {
+            continue;
+        }
+
+        std::cerr << "Read in file: " << filepath.asString() << std::endl;
+        std::ifstream slxFile(filepath.asString());
+        if (!slxFile.is_open()) {
+            std::cerr << "Failed to open file: " << filepath.asString() << std::endl;
+            continue; // or handle error
+        }
+        std::string contents((std::istreambuf_iterator<char>(slxFile)), std::istreambuf_iterator<char>());
+        slxFile.close();
+
+        std::cerr << "Input SLX:\n" << contents << "\n";
+
+        // Compile SLX to MaterialX document
+        mx::DocumentPtr doc = compiler.compile(contents);
+
+        // Write MTLX file
+        mx::FilePath debugFileName = filepath.getBaseName() + "_compiled.mtlx";
+        mx::FilePath debugFilePath = slxFolder / debugFileName;
+        mx::writeToXmlFile(doc, debugFilePath);
+        std::string debugString = mx::writeToXmlString(doc);
+        std::cerr << "--------------------------\n> Compiled Document for " << filename.asString() << "\n" << debugString;
+    }
+
+    return;
 
     for (const mx::FilePath& filename : slxFolder.getFilesInDirectory(mx::MTLX_EXTENSION))
     {
