@@ -367,11 +367,9 @@ class MX_GENSHADER_API ShaderNode
     static const string DOT;
     static const string IMAGE;
     static const string SURFACESHADER;
+    static const string BACKSURFACESHADER;
     static const string BSDF_R;
     static const string BSDF_T;
-    static const string TRANSFORM_POINT;
-    static const string TRANSFORM_VECTOR;
-    static const string TRANSFORM_NORMAL;
     static const string TEXTURE2D_GROUPNAME;
     static const string TEXTURE3D_GROUPNAME;
     static const string PROCEDURAL2D_GROUPNAME;
