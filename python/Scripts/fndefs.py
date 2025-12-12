@@ -66,28 +66,40 @@ test_make_functional_definition(test_name)
 # %%
 
 def get_matching_definitions(def_name):
-    stdsurf = stdlib.getNodeDef(def_name)
+    check_nodedef = stdlib.getNodeDef(def_name)
     nodegraph_counts = {}  # Will store {nodegraph: count}
     nodegraph_nodedefs = {}  # Will store {nodegraph: set(nodedefs)}
-    if stdsurf:
-        print(f"got node def: {stdsurf.getVersionString()}")
+    mapped_other_check_nodedef = None
+    if check_nodedef:
+        print(f"got node def: {check_nodedef.getVersionString()}")
 
-        other_stdsurf = stdsurf.getMatchingDefinitions()
-        print("* number of matching definitions:", len(other_stdsurf))
-        for ndstring in other_stdsurf:
+        # Traverse inheritance to find all matching definitions
+        other_check_nodedef = check_nodedef.getMatchingDefinitions()
+        print("* number of matching definitions:", len(other_check_nodedef))
+        for ndstring in other_check_nodedef:
             print("matching definition:", ndstring)
             nd = stdlib.getNodeDef(ndstring)
             if nd:
-                mapped_other_stdsurf = stdlib.getMatchingIndirectImplementations(ndstring)
-                print("number of mapped implementations:", len(mapped_other_stdsurf))
-                for impl in mapped_other_stdsurf:
+                # See if there are any indirect mappings
+                mapped_other_check_nodedef = stdlib.getMatchingIndirectImplementations(ndstring)
+                print("number of mapped implementations:", len(mapped_other_check_nodedef))
+                for impl in mapped_other_check_nodedef:
                     print("- mapping implementations:", impl.getName())
+                    #print(mx.prettyPrint(impl))
 
                 print("  version:", nd.getVersionString(), " inherits from:", nd.getInheritString())
                 impl = nd.getImplementation()
                 if impl.isA(mx.NodeGraph):
                     print("  nodegraph implementation:", impl.getName()) 
-                else:           
+
+                    # Check if there is an indirect mapping to get to this nodegraph
+                    #
+                    if mapped_other_check_nodedef:
+                        for other in mapped_other_check_nodedef:
+                            if other.getAttribute("nodegraph") == impl.getName():
+                                print(f"   (nodegraph acessed via {other.getName()} implementation redirection !)") 
+                else: 
+                    # >>> Code to handle regression (not required anymore after new cache change)          
                     nodegraph_name = None
                     nodegraph_string = impl.getAttribute("nodegraph")
                     if nodegraph_string:
@@ -141,7 +153,7 @@ if len(indirect_mapped_nodedefs) > 0:
     for ndef_name, impl in indirect_mapped_nodedefs.items():
         print(f"- nodedef: {ndef_name} -> implementation: {impl.getNamePath()}")
 
-def getUnappedImplementation(find_nodedef_name, indirect_mapped_nodedefs):
+def getUnmappedImplementation(find_nodedef_name, indirect_mapped_nodedefs):
     if find_nodedef_name in indirect_mapped_nodedefs:
         return indirect_mapped_nodedefs[find_nodedef_name]
     return None
@@ -149,7 +161,7 @@ def getUnappedImplementation(find_nodedef_name, indirect_mapped_nodedefs):
 impls = stdlib.getImplementations()
 for ndef in stdlib.getNodeDefs():
     ndef_name = ndef.getName()
-    unmapped_impl = getUnappedImplementation(ndef_name, indirect_mapped_nodedefs)
+    unmapped_impl = getUnmappedImplementation(ndef_name, indirect_mapped_nodedefs)
     if unmapped_impl:
         print(f"- found unmapped implementation {unmapped_impl.getNamePath()} for nodedef: {ndef_name}")
 
