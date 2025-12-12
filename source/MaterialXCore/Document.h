@@ -555,6 +555,10 @@ class MX_CORE_API Document : public GraphElement
     /// Implementation element or NodeGraph element.
     vector<InterfaceElementPtr> getMatchingImplementations(const string& nodeDef) const;
 
+    /// Return a vector of all node Implmentations are used to remap to a NodeGraph implementation
+    /// NodeDef string.  
+    vector<InterfaceElementPtr> getMatchingIndirectImplementations(const string& nodeDef) const;
+
     /// @}
     /// @name UnitDef Elements
     /// @{
