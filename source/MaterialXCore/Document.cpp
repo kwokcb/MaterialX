@@ -45,6 +45,7 @@ class Document::Cache
             portElementMap.clear();
             nodeDefMap.clear();
             implementationMap.clear();
+            indirectImplementationMap.clear();
             std::unordered_map<string, std::vector<InterfaceElementPtr>> funcNodeDefMap;
 
             // Traverse the document to build a new cache.
@@ -102,7 +103,22 @@ class Document::Cache
                         ImplementationPtr impl = interface->asA<Implementation>();
                         if (impl)
                         {
-                            implementationMap[interface->getQualifiedName(nodeDefString)].push_back(interface);
+                            // Check for implementation which specifies a nodegraph as the implementation
+                            const string& nodeGraphString = impl->getNodeGraph();
+                            if (!nodeGraphString.empty())
+                            {
+                                NodeGraphPtr nodeGraph = impl->getDocument()->getNodeGraph(nodeGraphString);
+                                if (nodeGraph)
+                                {
+                                    const string& qualifiedName = interface->getQualifiedName(nodeDefString);
+                                    implementationMap[qualifiedName].push_back(nodeGraph);
+                                    indirectImplementationMap[qualifiedName].push_back(interface);
+                                }
+                            }
+                            else
+                            {
+                                implementationMap[interface->getQualifiedName(nodeDefString)].push_back(interface);
+                            }
                         }
                     }
                 }
@@ -129,6 +145,7 @@ class Document::Cache
     std::unordered_map<string, std::vector<PortElementPtr>> portElementMap;
     std::unordered_map<string, std::vector<NodeDefPtr>> nodeDefMap;
     std::unordered_map<string, std::vector<InterfaceElementPtr>> implementationMap;
+    std::unordered_map<string, std::vector<InterfaceElementPtr>> indirectImplementationMap;
 };
 
 //
@@ -405,6 +422,25 @@ vector<InterfaceElementPtr> Document::getMatchingImplementations(const string& n
     if (_cache->implementationMap.count(nodeDef))
     {
         matchingImplementations.insert(matchingImplementations.end(), _cache->implementationMap.at(nodeDef).begin(), _cache->implementationMap.at(nodeDef).end());
+    }
+
+    return matchingImplementations;
+}
+
+vector<InterfaceElementPtr> Document::getMatchingIndirectImplementations(const string& nodeDef) const
+{
+    // Recurse to data library if present.
+    vector<InterfaceElementPtr> matchingImplementations = hasDataLibrary() ?
+        getDataLibrary()->getMatchingIndirectImplementations(nodeDef) :
+        vector<InterfaceElementPtr>();
+
+    // Refresh the cache.
+    _cache->refresh();
+
+    // Return all indirect implementation mappings matching the given nodedef string.
+    if (_cache->indirectImplementationMap.count(nodeDef))
+    {
+        matchingImplementations.insert(matchingImplementations.end(), _cache->indirectImplementationMap.at(nodeDef).begin(), _cache->indirectImplementationMap.at(nodeDef).end());
     }
 
     return matchingImplementations;

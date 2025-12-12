@@ -7,6 +7,10 @@
 
 #include <MaterialXCore/Document.h>
 
+#include <MaterialXCore/Node.h>
+
+#include <iostream>
+
 MATERIALX_NAMESPACE_BEGIN
 
 const string COLOR_SEMANTIC = "color";
@@ -136,6 +140,56 @@ bool NodeDef::isVersionCompatible(const string& version) const
 ConstInterfaceElementPtr NodeDef::getDeclaration(const string&) const
 {
     return getSelf()->asA<InterfaceElement>();
+}
+
+StringVec NodeDef::getMatchingDefinitions() const
+{
+    StringVec result = { getName() };
+    ElementPtr base = getInheritsFrom();
+    while (base)
+    {
+        result.push_back(base->getName());
+        base = base->getInheritsFrom();
+    }
+    return result;
+}
+
+ElementPtr NodeDef::makeFunctionalDefinition()
+{
+    InterfaceElementPtr impl = getImplementation();
+    NodeGraphPtr graph = impl->asA<NodeGraph>();
+    
+    if (!graph)
+    {
+        return nullptr;
+    }
+    
+    const string graphNodedefString = graph->getNodeDefString();
+    const string nodedefString = getQualifiedName(getName()); 
+    if (graphNodedefString != nodedefString)
+    {
+        return nullptr;
+    }
+
+    const string& newGraphName = graph->getName();            
+    ElementPtr newGraph = addChildOfCategory(Implementation::NODE_GRAPH_ATTRIBUTE, newGraphName);
+    if (!newGraph)
+    {
+        return nullptr;
+    }
+
+    newGraph->copyContentFrom(graph);
+    newGraph->removeAttribute(InterfaceElement::NODE_DEF_ATTRIBUTE);
+    newGraph->setName(newGraphName);
+
+    // Need to remove back-reference otherwise this implementation will be
+    // used instead of the new child graph.
+    //ElementPtr parent = getParent();
+    //const string& tempName = parent->createValidChildName(newGraphName + "_old");
+    //graph->setName(tempName);
+    graph->removeAttribute(InterfaceElement::NODE_DEF_ATTRIBUTE);
+    
+    return newGraph;
 }
 
 //

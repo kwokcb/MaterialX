@@ -174,6 +174,15 @@ class MX_CORE_API NodeDef : public InterfaceElement
     ///    by the given target name.
     ConstInterfaceElementPtr getDeclaration(const string& target = EMPTY_STRING) const override;
 
+    /// Get definitions that this definition inherits from. 
+    StringVec getMatchingDefinitions() const;    
+    
+    /// Make any existing functional nodegraph a child of the definition if
+    /// not already so. If the functional nodegraph is used by more than one
+    /// definition then it will not be removed.
+    /// @returns child nodegraph, or null if unsuccessful.
+    ElementPtr makeFunctionalDefinition();
+
     /// @}
 
   public:
