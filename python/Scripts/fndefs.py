@@ -16,18 +16,36 @@ def createTestDoc():
 doc, stdlib = createTestDoc()
 
 # %%
-
-
-
-def test_make_functional_definition(test_name):
+def test_make_functional_definition(test_name, target=''):
     test_def = stdlib.getNodeDef(test_name)
     if test_def:
         print(f"Node Definition '{test_name}' found.")
         #print(mx.prettyPrint(test_def))
 
-        graph = test_def.getImplementation()
+        graph = test_def.getImplementation(target)
         if graph:
-            if graph.isA(mx.NodeGraph) :
+            newGraph = None
+            if not graph.isA(mx.NodeGraph) :
+                ngname = graph.getNodeDefString()
+                qualname = graph.getQualifiedName(test_def.getName())
+                print("nodedef string:", ngname)
+                print("qualified name:", qualname)
+                if ngname == qualname:
+                    newGraphName = graph.getName()
+                    newGraph = test_def.addChildOfCategory(graph.getCategory(), newGraphName)
+                    if not newGraph:
+                        print("Failed to create new functional def child:", newGraphName)
+                    else:   
+                        print("Created new functional def child:", newGraphName)
+                        newGraph.copyContentFrom(graph)
+                        newGraph.removeAttribute(mx.InterfaceElement.NODE_DEF_ATTRIBUTE)
+                        
+                        parent = test_def.getParent()
+                        graph.removeAttribute(mx.InterfaceElement.NODE_DEF_ATTRIBUTE)
+                        #tempName = parent.createValidChildName(newGraphName + "_old")
+                        #graph.setName(tempName)
+
+            else: # if graph.isA(mx.NodeGraph) :
                 #print(mx.prettyPrint(graph))
                 newGraph = test_def.makeFunctionalDefinition()
             
@@ -53,15 +71,83 @@ def test_make_functional_definition(test_name):
                             #graph.setName(tempName)
                         
 
-                if newGraph:
-                    print("New functional node definition name:", newGraph.getName())
-                    print(mx.prettyPrint(test_def))
+            
+    
+    return test_def
 
+def make_functional_definition(test_name, target=''):
+    test_def = stdlib.getNodeDef(test_name)
+    if test_def:
+        #print(f"Update node definition '{test_name}'")
+
+        impl = test_def.getImplementation(target)
+        if impl:
+            new_impl = None
+            ngname = impl.getNodeDefString()
+            qualname = impl.getQualifiedName(test_def.getName())
+            if ngname == qualname:
+                new_impl_name = impl.getName()
+                new_impl = test_def.addChildOfCategory(impl.getCategory(), new_impl_name)
+                if not new_impl:
+                    print("Failed to create new functional def child:", new_impl_name)
+                else:   
+                    # Create new functional implementation
+                    new_impl.copyContentFrom(impl)
+                    new_impl.removeAttribute(mx.InterfaceElement.NODE_DEF_ATTRIBUTE)
+
+                    # Clear out back-reference to nodedef on original impl                    
+                    impl.removeAttribute(mx.InterfaceElement.NODE_DEF_ATTRIBUTE)
+            
+    return test_def
+
+
+# %%
+
+test_name = "ND_image_float"
+targetDefs = stdlib.getTargetDefs()
+test_def = stdlib.getNodeDef(test_name)
+print('Original definition:')
+print(mx.prettyPrint(test_def))
+
+test_def = None
+for targetDef in targetDefs:
+    print(">>>>>>>>>>>>>> Adding target:", targetDef.getName())
+    test_def = make_functional_definition(test_name, targetDef.getName())
+
+if test_def:
+    print("New functional node definition:")
+    print(mx.prettyPrint(test_def))
+
+# %%
+test_name = "ND_position_vector3"
+targetDefs = stdlib.getTargetDefs()
+test_def = stdlib.getNodeDef(test_name)
+print('Original definition:')
+print(mx.prettyPrint(test_def))
+
+test_def = None
+for targetDef in targetDefs:
+    print(">>>>>>>>>>>>>> Adding target:", targetDef.getName())
+    test_def = make_functional_definition(test_name, targetDef.getName())
+
+if test_def:
+    print("New functional node definition:")
+    print(mx.prettyPrint(test_def))
+
+# %%
 test_name = "ND_tiledimage_color3"
-test_make_functional_definition(test_name)
+targetDefs = stdlib.getTargetDefs()
+test_def = stdlib.getNodeDef(test_name)
+print('Original definition:')
+print(mx.prettyPrint(test_def))
 
-test_name = "ND_tiledimage_color4"
-test_make_functional_definition(test_name)
+test_def = None
+for targetDef in targetDefs:
+    test_def = make_functional_definition(test_name, targetDef.getName())
+
+if test_def:
+    print("New functional node definition:")
+    print(mx.prettyPrint(test_def))
 
 # %%
 
@@ -164,5 +250,8 @@ for ndef in stdlib.getNodeDefs():
     unmapped_impl = getUnmappedImplementation(ndef_name, indirect_mapped_nodedefs)
     if unmapped_impl:
         print(f"- found unmapped implementation {unmapped_impl.getNamePath()} for nodedef: {ndef_name}")
+
+# %%
+
 
 

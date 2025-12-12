@@ -7515,7 +7515,7 @@ a.anchor-link {
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [36]:</div>
+<div class="jp-InputPrompt jp-InputArea-prompt">In [86]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
 <div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">MaterialX</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mx</span>
@@ -7552,23 +7552,44 @@ Number of node definitions loaded: 803
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=c5e807bb">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=c5e807bb">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [37]:</div>
+<div class="jp-InputPrompt jp-InputArea-prompt">In [87]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">test_make_functional_definition</span><span class="p">(</span><span class="n">test_name</span><span class="p">):</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">test_make_functional_definition</span><span class="p">(</span><span class="n">test_name</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="s1">''</span><span class="p">):</span>
     <span class="n">test_def</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getNodeDef</span><span class="p">(</span><span class="n">test_name</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">test_def</span><span class="p">:</span>
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Node Definition '</span><span class="si">{</span><span class="n">test_name</span><span class="si">}</span><span class="s2">' found."</span><span class="p">)</span>
         <span class="c1">#print(mx.prettyPrint(test_def))</span>
 
-        <span class="n">graph</span> <span class="o">=</span> <span class="n">test_def</span><span class="o">.</span><span class="n">getImplementation</span><span class="p">()</span>
+        <span class="n">graph</span> <span class="o">=</span> <span class="n">test_def</span><span class="o">.</span><span class="n">getImplementation</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">graph</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">graph</span><span class="o">.</span><span class="n">isA</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">NodeGraph</span><span class="p">)</span> <span class="p">:</span>
+            <span class="n">newGraph</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">graph</span><span class="o">.</span><span class="n">isA</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">NodeGraph</span><span class="p">)</span> <span class="p">:</span>
+                <span class="n">ngname</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">getNodeDefString</span><span class="p">()</span>
+                <span class="n">qualname</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">getQualifiedName</span><span class="p">(</span><span class="n">test_def</span><span class="o">.</span><span class="n">getName</span><span class="p">())</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">"nodedef string:"</span><span class="p">,</span> <span class="n">ngname</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">"qualified name:"</span><span class="p">,</span> <span class="n">qualname</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">ngname</span> <span class="o">==</span> <span class="n">qualname</span><span class="p">:</span>
+                    <span class="n">newGraphName</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">getName</span><span class="p">()</span>
+                    <span class="n">newGraph</span> <span class="o">=</span> <span class="n">test_def</span><span class="o">.</span><span class="n">addChildOfCategory</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">getCategory</span><span class="p">(),</span> <span class="n">newGraphName</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">newGraph</span><span class="p">:</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="s2">"Failed to create new functional def child:"</span><span class="p">,</span> <span class="n">newGraphName</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>   
+                        <span class="nb">print</span><span class="p">(</span><span class="s2">"Created new functional def child:"</span><span class="p">,</span> <span class="n">newGraphName</span><span class="p">)</span>
+                        <span class="n">newGraph</span><span class="o">.</span><span class="n">copyContentFrom</span><span class="p">(</span><span class="n">graph</span><span class="p">)</span>
+                        <span class="n">newGraph</span><span class="o">.</span><span class="n">removeAttribute</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">InterfaceElement</span><span class="o">.</span><span class="n">NODE_DEF_ATTRIBUTE</span><span class="p">)</span>
+                        
+                        <span class="n">parent</span> <span class="o">=</span> <span class="n">test_def</span><span class="o">.</span><span class="n">getParent</span><span class="p">()</span>
+                        <span class="n">graph</span><span class="o">.</span><span class="n">removeAttribute</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">InterfaceElement</span><span class="o">.</span><span class="n">NODE_DEF_ATTRIBUTE</span><span class="p">)</span>
+                        <span class="c1">#tempName = parent.createValidChildName(newGraphName + "_old")</span>
+                        <span class="c1">#graph.setName(tempName)</span>
+
+            <span class="k">else</span><span class="p">:</span> <span class="c1"># if graph.isA(mx.NodeGraph) :</span>
                 <span class="c1">#print(mx.prettyPrint(graph))</span>
                 <span class="n">newGraph</span> <span class="o">=</span> <span class="n">test_def</span><span class="o">.</span><span class="n">makeFunctionalDefinition</span><span class="p">()</span>
             
@@ -7594,15 +7615,61 @@ Number of node definitions loaded: 803
                             <span class="c1">#graph.setName(tempName)</span>
                         
 
-                <span class="k">if</span> <span class="n">newGraph</span><span class="p">:</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="s2">"New functional node definition name:"</span><span class="p">,</span> <span class="n">newGraph</span><span class="o">.</span><span class="n">getName</span><span class="p">())</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">prettyPrint</span><span class="p">(</span><span class="n">test_def</span><span class="p">))</span>
+            
+    
+    <span class="k">return</span> <span class="n">test_def</span>
 
-<span class="n">test_name</span> <span class="o">=</span> <span class="s2">"ND_tiledimage_color3"</span>
-<span class="n">test_make_functional_definition</span><span class="p">(</span><span class="n">test_name</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">make_functional_definition</span><span class="p">(</span><span class="n">test_name</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="s1">''</span><span class="p">):</span>
+    <span class="n">test_def</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getNodeDef</span><span class="p">(</span><span class="n">test_name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">test_def</span><span class="p">:</span>
+        <span class="c1">#print(f"Update node definition '{test_name}'")</span>
 
-<span class="n">test_name</span> <span class="o">=</span> <span class="s2">"ND_tiledimage_color4"</span>
-<span class="n">test_make_functional_definition</span><span class="p">(</span><span class="n">test_name</span><span class="p">)</span>
+        <span class="n">impl</span> <span class="o">=</span> <span class="n">test_def</span><span class="o">.</span><span class="n">getImplementation</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">impl</span><span class="p">:</span>
+            <span class="n">new_impl</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">ngname</span> <span class="o">=</span> <span class="n">impl</span><span class="o">.</span><span class="n">getNodeDefString</span><span class="p">()</span>
+            <span class="n">qualname</span> <span class="o">=</span> <span class="n">impl</span><span class="o">.</span><span class="n">getQualifiedName</span><span class="p">(</span><span class="n">test_def</span><span class="o">.</span><span class="n">getName</span><span class="p">())</span>
+            <span class="k">if</span> <span class="n">ngname</span> <span class="o">==</span> <span class="n">qualname</span><span class="p">:</span>
+                <span class="n">new_impl_name</span> <span class="o">=</span> <span class="n">impl</span><span class="o">.</span><span class="n">getName</span><span class="p">()</span>
+                <span class="n">new_impl</span> <span class="o">=</span> <span class="n">test_def</span><span class="o">.</span><span class="n">addChildOfCategory</span><span class="p">(</span><span class="n">impl</span><span class="o">.</span><span class="n">getCategory</span><span class="p">(),</span> <span class="n">new_impl_name</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">new_impl</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="s2">"Failed to create new functional def child:"</span><span class="p">,</span> <span class="n">new_impl_name</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>   
+                    <span class="c1"># Create new functional implementation</span>
+                    <span class="n">new_impl</span><span class="o">.</span><span class="n">copyContentFrom</span><span class="p">(</span><span class="n">impl</span><span class="p">)</span>
+                    <span class="n">new_impl</span><span class="o">.</span><span class="n">removeAttribute</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">InterfaceElement</span><span class="o">.</span><span class="n">NODE_DEF_ATTRIBUTE</span><span class="p">)</span>
+
+                    <span class="c1"># Clear out back-reference to nodedef on original impl                    </span>
+                    <span class="n">impl</span><span class="o">.</span><span class="n">removeAttribute</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">InterfaceElement</span><span class="o">.</span><span class="n">NODE_DEF_ATTRIBUTE</span><span class="p">)</span>
+            
+    <span class="k">return</span> <span class="n">test_def</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=30acca8c">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [88]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">test_name</span> <span class="o">=</span> <span class="s2">"ND_image_float"</span>
+<span class="n">targetDefs</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getTargetDefs</span><span class="p">()</span>
+<span class="n">test_def</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getNodeDef</span><span class="p">(</span><span class="n">test_name</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s1">'Original definition:'</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">prettyPrint</span><span class="p">(</span><span class="n">test_def</span><span class="p">))</span>
+
+<span class="n">test_def</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="k">for</span> <span class="n">targetDef</span> <span class="ow">in</span> <span class="n">targetDefs</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target:"</span><span class="p">,</span> <span class="n">targetDef</span><span class="o">.</span><span class="n">getName</span><span class="p">())</span>
+    <span class="n">test_def</span> <span class="o">=</span> <span class="n">make_functional_definition</span><span class="p">(</span><span class="n">test_name</span><span class="p">,</span> <span class="n">targetDef</span><span class="o">.</span><span class="n">getName</span><span class="p">())</span>
+
+<span class="k">if</span> <span class="n">test_def</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"New functional node definition:"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">prettyPrint</span><span class="p">(</span><span class="n">test_def</span><span class="p">))</span>
 </pre></div>
 </div>
 </div>
@@ -7615,8 +7682,166 @@ Number of node definitions loaded: 803
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
-<pre>Node Definition 'ND_tiledimage_color3' found.
-New functional node definition name: NG_tiledimage_color3
+<pre>Original definition:
+&lt;nodedef name="ND_image_float" node="image" nodegroup="texture2d"&gt;
+  &lt;input name="file" type="filename" value="" uiname="Filename" uniform="true"&gt;
+  &lt;input name="layer" type="string" value="" uiname="Layer" uniform="true"&gt;
+  &lt;input name="default" type="float" value="0.0" uiname="Default Color"&gt;
+  &lt;input name="texcoord" type="vector2" defaultgeomprop="UV0" uiname="Texture Coordinates"&gt;
+  &lt;input name="uaddressmode" type="string" value="periodic" enum="constant,clamp,periodic,mirror" uiname="Address Mode U" uniform="true"&gt;
+  &lt;input name="vaddressmode" type="string" value="periodic" enum="constant,clamp,periodic,mirror" uiname="Address Mode V" uniform="true"&gt;
+  &lt;input name="filtertype" type="string" value="linear" enum="closest,linear,cubic" uiname="Filter Type" uniform="true"&gt;
+  &lt;input name="framerange" type="string" value="" uiname="Frame Range" uniform="true"&gt;
+  &lt;input name="frameoffset" type="integer" value="0" uiname="Frame Offset" uniform="true"&gt;
+  &lt;input name="frameendaction" type="string" value="constant" enum="constant,clamp,periodic,mirror" uiname="Frame End Action" uniform="true"&gt;
+  &lt;output name="out" type="float" default="0.0"&gt;
+
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: essl
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genglsl
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genmdl
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genmsl
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genosl
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genoslnetwork
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genslang
+New functional node definition:
+&lt;nodedef name="ND_image_float" node="image" nodegroup="texture2d"&gt;
+  &lt;input name="file" type="filename" value="" uiname="Filename" uniform="true"&gt;
+  &lt;input name="layer" type="string" value="" uiname="Layer" uniform="true"&gt;
+  &lt;input name="default" type="float" value="0.0" uiname="Default Color"&gt;
+  &lt;input name="texcoord" type="vector2" defaultgeomprop="UV0" uiname="Texture Coordinates"&gt;
+  &lt;input name="uaddressmode" type="string" value="periodic" enum="constant,clamp,periodic,mirror" uiname="Address Mode U" uniform="true"&gt;
+  &lt;input name="vaddressmode" type="string" value="periodic" enum="constant,clamp,periodic,mirror" uiname="Address Mode V" uniform="true"&gt;
+  &lt;input name="filtertype" type="string" value="linear" enum="closest,linear,cubic" uiname="Filter Type" uniform="true"&gt;
+  &lt;input name="framerange" type="string" value="" uiname="Frame Range" uniform="true"&gt;
+  &lt;input name="frameoffset" type="integer" value="0" uiname="Frame Offset" uniform="true"&gt;
+  &lt;input name="frameendaction" type="string" value="constant" enum="constant,clamp,periodic,mirror" uiname="Frame End Action" uniform="true"&gt;
+  &lt;output name="out" type="float" default="0.0"&gt;
+  &lt;implementation name="IM_image_float_genglsl" file="mx_image_float.glsl" function="mx_image_float" target="genglsl"&gt;
+    &lt;input name="default" type="float" implname="default_value"&gt;
+  &lt;implementation name="IM_image_float_genmdl" sourcecode="materialx::stdlib_{{MDL_VERSION_SUFFIX}}::mx_image_float({{file}}, {{layer}}, {{default}}, {{texcoord}}, {{uaddressmode}}, {{vaddressmode}}, {{filtertype}}, {{framerange}}, {{frameoffset}}, {{frameendaction}}, mxp_flip_v:{{flip_v}})" target="genmdl"&gt;
+    &lt;input name="default" type="float" implname="default_value"&gt;
+  &lt;implementation name="IM_image_float_genmsl" file="../genglsl/mx_image_float.glsl" function="mx_image_float" target="genmsl"&gt;
+    &lt;input name="default" type="float" implname="default_value"&gt;
+  &lt;implementation name="IM_image_float_genosl" file="mx_image_float.osl" function="mx_image_float" target="genosl"&gt;
+    &lt;input name="default" type="float" implname="default_value"&gt;
+  &lt;implementation name="IM_image_float_genslang" file="../genglsl/mx_image_float.glsl" function="mx_image_float" target="genslang"&gt;
+    &lt;input name="default" type="float" implname="default_value"&gt;
+
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=ae09cc53">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [89]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">test_name</span> <span class="o">=</span> <span class="s2">"ND_position_vector3"</span>
+<span class="n">targetDefs</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getTargetDefs</span><span class="p">()</span>
+<span class="n">test_def</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getNodeDef</span><span class="p">(</span><span class="n">test_name</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s1">'Original definition:'</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">prettyPrint</span><span class="p">(</span><span class="n">test_def</span><span class="p">))</span>
+
+<span class="n">test_def</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="k">for</span> <span class="n">targetDef</span> <span class="ow">in</span> <span class="n">targetDefs</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target:"</span><span class="p">,</span> <span class="n">targetDef</span><span class="o">.</span><span class="n">getName</span><span class="p">())</span>
+    <span class="n">test_def</span> <span class="o">=</span> <span class="n">make_functional_definition</span><span class="p">(</span><span class="n">test_name</span><span class="p">,</span> <span class="n">targetDef</span><span class="o">.</span><span class="n">getName</span><span class="p">())</span>
+
+<span class="k">if</span> <span class="n">test_def</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"New functional node definition:"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">prettyPrint</span><span class="p">(</span><span class="n">test_def</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>Original definition:
+&lt;nodedef name="ND_position_vector3" node="position" nodegroup="geometric"&gt;
+  &lt;input name="space" type="string" value="object" enum="model,object,world" uniform="true"&gt;
+  &lt;output name="out" type="vector3" default="0.0, 0.0, 0.0"&gt;
+
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: essl
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genglsl
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genmdl
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genmsl
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genosl
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genoslnetwork
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; Adding target: genslang
+New functional node definition:
+&lt;nodedef name="ND_position_vector3" node="position" nodegroup="geometric"&gt;
+  &lt;input name="space" type="string" value="object" enum="model,object,world" uniform="true"&gt;
+  &lt;output name="out" type="vector3" default="0.0, 0.0, 0.0"&gt;
+  &lt;implementation name="IM_position_vector3_genglsl" target="genglsl"&gt;
+  &lt;implementation name="IM_position_vector3_genmdl" sourcecode="materialx::stdlib_{{MDL_VERSION_SUFFIX}}::mx_position_vector3(mxp_space:{{space}})" target="genmdl"&gt;
+  &lt;implementation name="IM_position_vector3_genmsl" target="genmsl"&gt;
+  &lt;implementation name="IM_position_vector3_genosl" target="genosl" sourcecode="transform({{space}}, P)"&gt;
+  &lt;implementation name="IM_position_vector3_genslang" target="genslang"&gt;
+
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=f50d3a3e">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [90]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">test_name</span> <span class="o">=</span> <span class="s2">"ND_tiledimage_color3"</span>
+<span class="n">targetDefs</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getTargetDefs</span><span class="p">()</span>
+<span class="n">test_def</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getNodeDef</span><span class="p">(</span><span class="n">test_name</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s1">'Original definition:'</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">prettyPrint</span><span class="p">(</span><span class="n">test_def</span><span class="p">))</span>
+
+<span class="n">test_def</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="k">for</span> <span class="n">targetDef</span> <span class="ow">in</span> <span class="n">targetDefs</span><span class="p">:</span>
+    <span class="n">test_def</span> <span class="o">=</span> <span class="n">make_functional_definition</span><span class="p">(</span><span class="n">test_name</span><span class="p">,</span> <span class="n">targetDef</span><span class="o">.</span><span class="n">getName</span><span class="p">())</span>
+
+<span class="k">if</span> <span class="n">test_def</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"New functional node definition:"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">prettyPrint</span><span class="p">(</span><span class="n">test_def</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>Original definition:
+&lt;nodedef name="ND_tiledimage_color3" node="tiledimage" nodegroup="texture2d"&gt;
+  &lt;input name="file" type="filename" value="" uniform="true"&gt;
+  &lt;input name="default" type="color3" value="0.0, 0.0, 0.0"&gt;
+  &lt;input name="texcoord" type="vector2" defaultgeomprop="UV0"&gt;
+  &lt;input name="uvtiling" type="vector2" value="1.0, 1.0"&gt;
+  &lt;input name="uvoffset" type="vector2" value="0.0, 0.0"&gt;
+  &lt;input name="realworldimagesize" type="vector2" value="1.0, 1.0" unittype="distance"&gt;
+  &lt;input name="realworldtilesize" type="vector2" value="1.0, 1.0" unittype="distance"&gt;
+  &lt;input name="filtertype" type="string" value="linear" enum="closest,linear,cubic" uniform="true"&gt;
+  &lt;input name="framerange" type="string" value="" uniform="true"&gt;
+  &lt;input name="frameoffset" type="integer" value="0" uniform="true"&gt;
+  &lt;input name="frameendaction" type="string" value="constant" enum="constant,clamp,periodic,mirror" uniform="true"&gt;
+  &lt;output name="out" type="color3" default="0.0, 0.0, 0.0"&gt;
+
+New functional node definition:
 &lt;nodedef name="ND_tiledimage_color3" node="tiledimage" nodegroup="texture2d"&gt;
   &lt;input name="file" type="filename" value="" uniform="true"&gt;
   &lt;input name="default" type="color3" value="0.0, 0.0, 0.0"&gt;
@@ -7655,46 +7880,6 @@ New functional node definition name: NG_tiledimage_color3
       &lt;input name="frameendaction" type="string" interfacename="frameendaction"&gt;
     &lt;output name="out" type="color3" nodename="N_img_color3"&gt;
 
-Node Definition 'ND_tiledimage_color4' found.
-New functional node definition name: NG_tiledimage_color4
-&lt;nodedef name="ND_tiledimage_color4" node="tiledimage" nodegroup="texture2d"&gt;
-  &lt;input name="file" type="filename" value="" uniform="true"&gt;
-  &lt;input name="default" type="color4" value="0.0, 0.0, 0.0, 0.0"&gt;
-  &lt;input name="texcoord" type="vector2" defaultgeomprop="UV0"&gt;
-  &lt;input name="uvtiling" type="vector2" value="1.0, 1.0"&gt;
-  &lt;input name="uvoffset" type="vector2" value="0.0, 0.0"&gt;
-  &lt;input name="realworldimagesize" type="vector2" value="1.0, 1.0" unittype="distance"&gt;
-  &lt;input name="realworldtilesize" type="vector2" value="1.0, 1.0" unittype="distance"&gt;
-  &lt;input name="filtertype" type="string" value="linear" enum="closest,linear,cubic" uniform="true"&gt;
-  &lt;input name="framerange" type="string" value="" uniform="true"&gt;
-  &lt;input name="frameoffset" type="integer" value="0" uniform="true"&gt;
-  &lt;input name="frameendaction" type="string" value="constant" enum="constant,clamp,periodic,mirror" uniform="true"&gt;
-  &lt;output name="out" type="color4" default="0.0, 0.0, 0.0, 0.0"&gt;
-  &lt;nodegraph name="NG_tiledimage_color4"&gt;
-    &lt;multiply name="N_mult_color4" type="vector2"&gt;
-      &lt;input name="in1" type="vector2" interfacename="texcoord"&gt;
-      &lt;input name="in2" type="vector2" interfacename="uvtiling"&gt;
-    &lt;subtract name="N_sub_color4" type="vector2"&gt;
-      &lt;input name="in1" type="vector2" nodename="N_mult_color4"&gt;
-      &lt;input name="in2" type="vector2" interfacename="uvoffset"&gt;
-    &lt;divide name="N_divtilesize_color4" type="vector2"&gt;
-      &lt;input name="in1" type="vector2" nodename="N_sub_color4"&gt;
-      &lt;input name="in2" type="vector2" interfacename="realworldimagesize"&gt;
-    &lt;multiply name="N_multtilesize_color4" type="vector2"&gt;
-      &lt;input name="in1" type="vector2" nodename="N_divtilesize_color4"&gt;
-      &lt;input name="in2" type="vector2" interfacename="realworldtilesize"&gt;
-    &lt;image name="N_img_color4" type="color4"&gt;
-      &lt;input name="file" type="filename" interfacename="file"&gt;
-      &lt;input name="default" type="color4" interfacename="default"&gt;
-      &lt;input name="texcoord" type="vector2" nodename="N_multtilesize_color4"&gt;
-      &lt;input name="uaddressmode" type="string" value="periodic"&gt;
-      &lt;input name="vaddressmode" type="string" value="periodic"&gt;
-      &lt;input name="filtertype" type="string" interfacename="filtertype"&gt;
-      &lt;input name="framerange" type="string" interfacename="framerange"&gt;
-      &lt;input name="frameoffset" type="integer" interfacename="frameoffset"&gt;
-      &lt;input name="frameendaction" type="string" interfacename="frameendaction"&gt;
-    &lt;output name="out" type="color4" nodename="N_img_color4"&gt;
-
 </pre>
 </div>
 </div>
@@ -7705,32 +7890,44 @@ New functional node definition name: NG_tiledimage_color4
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [38]:</div>
+<div class="jp-InputPrompt jp-InputArea-prompt">In [91]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
 <div class="highlight hl-ipython3"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">get_matching_definitions</span><span class="p">(</span><span class="n">def_name</span><span class="p">):</span>
-    <span class="n">stdsurf</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getNodeDef</span><span class="p">(</span><span class="n">def_name</span><span class="p">)</span>
+    <span class="n">check_nodedef</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getNodeDef</span><span class="p">(</span><span class="n">def_name</span><span class="p">)</span>
     <span class="n">nodegraph_counts</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># Will store {nodegraph: count}</span>
     <span class="n">nodegraph_nodedefs</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># Will store {nodegraph: set(nodedefs)}</span>
-    <span class="k">if</span> <span class="n">stdsurf</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"got node def: </span><span class="si">{</span><span class="n">stdsurf</span><span class="o">.</span><span class="n">getVersionString</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">mapped_other_check_nodedef</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">check_nodedef</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"got node def: </span><span class="si">{</span><span class="n">check_nodedef</span><span class="o">.</span><span class="n">getVersionString</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
-        <span class="n">other_stdsurf</span> <span class="o">=</span> <span class="n">stdsurf</span><span class="o">.</span><span class="n">getMatchingDefinitions</span><span class="p">()</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">"* number of matching definitions:"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">other_stdsurf</span><span class="p">))</span>
-        <span class="k">for</span> <span class="n">ndstring</span> <span class="ow">in</span> <span class="n">other_stdsurf</span><span class="p">:</span>
+        <span class="c1"># Traverse inheritance to find all matching definitions</span>
+        <span class="n">other_check_nodedef</span> <span class="o">=</span> <span class="n">check_nodedef</span><span class="o">.</span><span class="n">getMatchingDefinitions</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"* number of matching definitions:"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">other_check_nodedef</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">ndstring</span> <span class="ow">in</span> <span class="n">other_check_nodedef</span><span class="p">:</span>
             <span class="nb">print</span><span class="p">(</span><span class="s2">"matching definition:"</span><span class="p">,</span> <span class="n">ndstring</span><span class="p">)</span>
             <span class="n">nd</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getNodeDef</span><span class="p">(</span><span class="n">ndstring</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">nd</span><span class="p">:</span>
-                <span class="n">mapped_other_stdsurf</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getMatchingIndirectImplementations</span><span class="p">(</span><span class="n">ndstring</span><span class="p">)</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">"number of mapped implementations:"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">mapped_other_stdsurf</span><span class="p">))</span>
-                <span class="k">for</span> <span class="n">impl</span> <span class="ow">in</span> <span class="n">mapped_other_stdsurf</span><span class="p">:</span>
+                <span class="c1"># See if there are any indirect mappings</span>
+                <span class="n">mapped_other_check_nodedef</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getMatchingIndirectImplementations</span><span class="p">(</span><span class="n">ndstring</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">"number of mapped implementations:"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">mapped_other_check_nodedef</span><span class="p">))</span>
+                <span class="k">for</span> <span class="n">impl</span> <span class="ow">in</span> <span class="n">mapped_other_check_nodedef</span><span class="p">:</span>
                     <span class="nb">print</span><span class="p">(</span><span class="s2">"- mapping implementations:"</span><span class="p">,</span> <span class="n">impl</span><span class="o">.</span><span class="n">getName</span><span class="p">())</span>
+                    <span class="c1">#print(mx.prettyPrint(impl))</span>
 
                 <span class="nb">print</span><span class="p">(</span><span class="s2">"  version:"</span><span class="p">,</span> <span class="n">nd</span><span class="o">.</span><span class="n">getVersionString</span><span class="p">(),</span> <span class="s2">" inherits from:"</span><span class="p">,</span> <span class="n">nd</span><span class="o">.</span><span class="n">getInheritString</span><span class="p">())</span>
                 <span class="n">impl</span> <span class="o">=</span> <span class="n">nd</span><span class="o">.</span><span class="n">getImplementation</span><span class="p">()</span>
                 <span class="k">if</span> <span class="n">impl</span><span class="o">.</span><span class="n">isA</span><span class="p">(</span><span class="n">mx</span><span class="o">.</span><span class="n">NodeGraph</span><span class="p">):</span>
                     <span class="nb">print</span><span class="p">(</span><span class="s2">"  nodegraph implementation:"</span><span class="p">,</span> <span class="n">impl</span><span class="o">.</span><span class="n">getName</span><span class="p">())</span> 
-                <span class="k">else</span><span class="p">:</span>           
+
+                    <span class="c1"># Check if there is an indirect mapping to get to this nodegraph</span>
+                    <span class="c1">#</span>
+                    <span class="k">if</span> <span class="n">mapped_other_check_nodedef</span><span class="p">:</span>
+                        <span class="k">for</span> <span class="n">other</span> <span class="ow">in</span> <span class="n">mapped_other_check_nodedef</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="n">other</span><span class="o">.</span><span class="n">getAttribute</span><span class="p">(</span><span class="s2">"nodegraph"</span><span class="p">)</span> <span class="o">==</span> <span class="n">impl</span><span class="o">.</span><span class="n">getName</span><span class="p">():</span>
+                                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"   (nodegraph acessed via </span><span class="si">{</span><span class="n">other</span><span class="o">.</span><span class="n">getName</span><span class="p">()</span><span class="si">}</span><span class="s2"> implementation redirection !)"</span><span class="p">)</span> 
+                <span class="k">else</span><span class="p">:</span> 
+                    <span class="c1"># &gt;&gt;&gt; Code to handle regression (not required anymore after new cache change)          </span>
                     <span class="n">nodegraph_name</span> <span class="o">=</span> <span class="kc">None</span>
                     <span class="n">nodegraph_string</span> <span class="o">=</span> <span class="n">impl</span><span class="o">.</span><span class="n">getAttribute</span><span class="p">(</span><span class="s2">"nodegraph"</span><span class="p">)</span>
                     <span class="k">if</span> <span class="n">nodegraph_string</span><span class="p">:</span>
@@ -7796,11 +7993,13 @@ number of mapped implementations: 2
 - mapping implementations: IMPL_standard_surface_surfaceshader_optim
   version: 1.0.1  inherits from: ND_standard_surface_surfaceshader_100
   nodegraph implementation: NG_standard_surface_surfaceshader_100
+   (nodegraph acessed via IMPL_standard_surface_surfaceshader_101 implementation redirection !)
 matching definition: ND_standard_surface_surfaceshader_100
 number of mapped implementations: 1
 - mapping implementations: IMPL_standard_surface_surfaceshader_100
   version: 1.0.0  inherits from: 
   nodegraph implementation: NG_standard_surface_surfaceshader_100
+   (nodegraph acessed via IMPL_standard_surface_surfaceshader_100 implementation redirection !)
 ********************************************************************************
 Mapped Node graph usage counts:
 --------------------------------------------------------------------------------
@@ -7815,7 +8014,7 @@ Mapped Node graph usage counts:
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [39]:</div>
+<div class="jp-InputPrompt jp-InputArea-prompt">In [92]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
 <div class="highlight hl-ipython3"><pre><span></span><span class="n">indirect_mapped_nodedefs</span> <span class="o">=</span> <span class="p">{}</span>
@@ -7837,7 +8036,7 @@ Mapped Node graph usage counts:
     <span class="k">for</span> <span class="n">ndef_name</span><span class="p">,</span> <span class="n">impl</span> <span class="ow">in</span> <span class="n">indirect_mapped_nodedefs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"- nodedef: </span><span class="si">{</span><span class="n">ndef_name</span><span class="si">}</span><span class="s2"> -&gt; implementation: </span><span class="si">{</span><span class="n">impl</span><span class="o">.</span><span class="n">getNamePath</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
-<span class="k">def</span><span class="w"> </span><span class="nf">getUnappedImplementation</span><span class="p">(</span><span class="n">find_nodedef_name</span><span class="p">,</span> <span class="n">indirect_mapped_nodedefs</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">getUnmappedImplementation</span><span class="p">(</span><span class="n">find_nodedef_name</span><span class="p">,</span> <span class="n">indirect_mapped_nodedefs</span><span class="p">):</span>
     <span class="k">if</span> <span class="n">find_nodedef_name</span> <span class="ow">in</span> <span class="n">indirect_mapped_nodedefs</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">indirect_mapped_nodedefs</span><span class="p">[</span><span class="n">find_nodedef_name</span><span class="p">]</span>
     <span class="k">return</span> <span class="kc">None</span>
@@ -7845,7 +8044,7 @@ Mapped Node graph usage counts:
 <span class="n">impls</span> <span class="o">=</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getImplementations</span><span class="p">()</span>
 <span class="k">for</span> <span class="n">ndef</span> <span class="ow">in</span> <span class="n">stdlib</span><span class="o">.</span><span class="n">getNodeDefs</span><span class="p">():</span>
     <span class="n">ndef_name</span> <span class="o">=</span> <span class="n">ndef</span><span class="o">.</span><span class="n">getName</span><span class="p">()</span>
-    <span class="n">unmapped_impl</span> <span class="o">=</span> <span class="n">getUnappedImplementation</span><span class="p">(</span><span class="n">ndef_name</span><span class="p">,</span> <span class="n">indirect_mapped_nodedefs</span><span class="p">)</span>
+    <span class="n">unmapped_impl</span> <span class="o">=</span> <span class="n">getUnmappedImplementation</span><span class="p">(</span><span class="n">ndef_name</span><span class="p">,</span> <span class="n">indirect_mapped_nodedefs</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">unmapped_impl</span><span class="p">:</span>
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"- found unmapped implementation </span><span class="si">{</span><span class="n">unmapped_impl</span><span class="o">.</span><span class="n">getNamePath</span><span class="p">()</span><span class="si">}</span><span class="s2"> for nodedef: </span><span class="si">{</span><span class="n">ndef_name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
@@ -7863,6 +8062,20 @@ Mapped Node graph usage counts:
 <pre>Directly mapped nodedefs count: 266
 Indirectly mapped nodedefs count: 0
 </pre>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=a254c962">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span> 
+</pre></div>
 </div>
 </div>
 </div>
