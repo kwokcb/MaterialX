@@ -285,12 +285,12 @@ bool ShaderGenerator::implementationRegistered(const string& name) const
     return _implFactory.classRegistered(name);
 }
 
-ShaderNodeImplPtr ShaderGenerator::createShaderNodeImplForNodeGraph(const NodeDef& /*nodedef*/) const
+ShaderNodeImplPtr ShaderGenerator::createShaderNodeImplForNodeGraph(const NodeGraph& /*nodegraph*/) const
 {
     return CompoundNode::create();
 }
 
-ShaderNodeImplPtr ShaderGenerator::createShaderNodeImplForImplementation(const NodeDef& /*nodedef*/) const
+ShaderNodeImplPtr ShaderGenerator::createShaderNodeImplForImplementation(const Implementation& /*implementation*/) const
 {
     return SourceCodeNode::create();
 }
@@ -314,10 +314,11 @@ ShaderNodeImplPtr ShaderGenerator::getImplementation(const NodeDef& nodedef, Gen
 
     if (implElement->isA<NodeGraph>())
     {
-        impl = createShaderNodeImplForNodeGraph(nodedef);
+        impl = createShaderNodeImplForNodeGraph(*implElement->asA<NodeGraph>());
     }
     else if (implElement->isA<Implementation>())
     {
+        ImplementationPtr implementationElement = implElement->asA<Implementation>();
         if (getColorManagementSystem() && getColorManagementSystem()->hasImplementation(name))
         {
             impl = getColorManagementSystem()->createImplementation(name);
@@ -329,7 +330,7 @@ ShaderNodeImplPtr ShaderGenerator::getImplementation(const NodeDef& nodedef, Gen
         }
         if (!impl)
         {
-            impl = createShaderNodeImplForImplementation(nodedef);
+            impl = createShaderNodeImplForImplementation(*implElement->asA<Implementation>());
         }
     }
     if (!impl)
