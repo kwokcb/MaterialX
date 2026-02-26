@@ -104,6 +104,10 @@ describe('Generate Shaders', function ()
                     gl.deleteShader(glVertexShader);
                     gl.deleteShader(glPixelShader);
                 }
+                
+                // Create mermaid graph
+                graph = mxShader.createMermaidGraph(true);
+
                 // Cleanup shader wrapper
                 mxShader.delete();
             }
