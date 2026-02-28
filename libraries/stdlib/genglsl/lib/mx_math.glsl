@@ -1,8 +1,4 @@
-#ifdef GL_ES
-    #define M_FLOAT_EPS 0.0001
-#else
-    #define M_FLOAT_EPS 1e-8
-#endif
+#define M_FLOAT_EPS 1e-8
 
 #define mx_mod mod
 #define mx_inverse inverse
