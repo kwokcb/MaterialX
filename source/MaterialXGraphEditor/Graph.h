@@ -7,6 +7,7 @@
 #define MATERIALX_GRAPH_H
 
 #include <MaterialXGraphEditor/FileDialog.h>
+#include <MaterialXGraphEditor/Layout.h>
 #include <MaterialXGraphEditor/RenderView.h>
 #include <MaterialXGraphEditor/UiNode.h>
 
@@ -50,10 +51,15 @@ class MenuItem
 // Based on the Link struct from ImGui Node Editor blueprints-examples.cpp
 struct Link
 {
-    Link();
+    Link(int id, int startAttr, int endAttr) :
+        _id(id),
+        _startAttr(startAttr),
+        _endAttr(endAttr)
+    {
+    }
 
-    int _startAttr, _endAttr;
     int _id;
+    int _startAttr, _endAttr;
 };
 
 // The UI state associated with a graph level (document or nodegraph).
@@ -73,9 +79,6 @@ struct GraphState
     // Links and edges representing connections within this graph.
     std::vector<Link> links;
     std::vector<UiEdge> edges;
-
-    // Map from layout level to nodes at that level, used for auto-layout.
-    std::unordered_map<int, std::vector<UiNodePtr>> levelMap;
 
     // Counter for generating unique UI element IDs.
     int nextUiId = 1;
@@ -131,7 +134,7 @@ class Graph
     int findLinkPosition(int id);
 
     // Check if link exists in the current link vector
-    bool linkExists(Link newLink);
+    bool linkExists(const Link& newLink);
 
     // Check if link can be added. Show a diagnostic message as the label.
     bool checkCanAddLink(ed::PinId startPinId, ed::PinId endPinId);
@@ -148,16 +151,8 @@ class Graph
 
     void deleteLinkInfo(int startAtrr, int endAttr);
 
-    // Layout the x-position by assigning the node levels based on its distance from the first node
-    ImVec2 layoutPosition(UiNodePtr node, ImVec2 pos, bool initialLayout, int level);
-
-    // Extra layout pass for inputs and nodes that do not attach to an output node
-    void layoutInputs();
-
-    void findYSpacing(float startPos);
-    float totalHeight(int level);
-    void setYSpacing(int level, float startingPos);
-    float findAvgY(const std::vector<UiNodePtr>& nodes);
+    // Apply the layout engine to position all nodes.
+    void applyLayout(const std::vector<int>& outputNodeIndices);
 
     // Return pin color based on the type of the value of that pin
     void setPinColor();
@@ -195,9 +190,11 @@ class Graph
     void setUiNodeInfo(UiNodePtr node, const std::string& type, const std::string& category);
 
     // Check if edge exists in edge vector
-    bool edgeExists(UiEdge edge);
+    bool edgeExists(const UiEdge& edge);
 
-    void createEdge(UiNodePtr upNode, UiNodePtr downNode, mx::InputPtr connectingInput);
+    // Create an edge between two nodes if it doesn't already exist.
+    // Returns true if the edge was created, false if invalid or already exists.
+    bool createEdge(UiNodePtr upNode, UiNodePtr downNode, mx::InputPtr connectingInput);
 
     // Remove node edge based on connecting input
     void removeEdge(int downNode, int upNode, UiPinPtr pin);
@@ -209,9 +206,6 @@ class Graph
 
     // Restore node positions from MaterialX element attributes.
     void restorePositions();
-
-    // Check if node has already been assigned a position
-    bool checkPosition(UiNodePtr node);
 
     // Add an input to a node based on its NodeDef input definition.
     mx::InputPtr addNodeInput(UiNodePtr node, mx::InputPtr nodeDefInput);
@@ -313,6 +307,7 @@ class Graph
     std::map<UiNodePtr, UiNodePtr> _copiedNodes;
 
     bool _needsLayout;
+    bool _layoutPending;
     bool _needsNavigation;
     bool _delete;
 
@@ -345,6 +340,9 @@ class Graph
 
     // DPI scaling for fonts
     float _fontScale;
+
+    // Layout engine
+    Layout _layout;
 
     // Options
     bool _saveNodePositions;

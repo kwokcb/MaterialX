@@ -12,6 +12,7 @@
 #include <imgui_node_editor_internal.h>
 #include <widgets.h>
 
+#include <cctype>
 #include <iostream>
 
 namespace
@@ -116,18 +117,6 @@ static void DisableSRGBCallback(const ImDrawList*, const ImDrawCmd*)
 } // anonymous namespace
 
 //
-// Link methods
-//
-
-Link::Link() :
-    _startAttr(-1),
-    _endAttr(-1)
-{
-    static int nextId = 1;
-    _id = nextId++;
-}
-
-//
 // Graph methods
 //
 
@@ -141,6 +130,7 @@ Graph::Graph(const std::string& materialFilename,
     _searchPath(searchPath),
     _libraryFolders(libraryFolders),
     _needsLayout(false),
+    _layoutPending(false),
     _needsNavigation(false),
     _delete(false),
     _fileDialogSave(FileDialog::EnterNewFilename),
@@ -382,13 +372,10 @@ void Graph::linkGraph()
                 UiNodePtr inputNode = node->getConnectedNode(inputName);
                 if (inputNode != nullptr)
                 {
-                    Link link;
-
                     // Get the input connections for the current UiNode
                     ax::NodeEditor::PinId id = inputs[i]->getPinId();
                     inputs[i]->setConnected(true);
                     int end = int(id.Get());
-                    link._endAttr = end;
 
                     // Get id number of output of node
                     ed::PinId outputId = getOutputPin(node, inputNode, inputs[i]);
@@ -406,8 +393,7 @@ void Graph::linkGraph()
                             }
                         }
 
-                        link._startAttr = start;
-
+                        Link link(_state.nextUiId++, start, end);
                         if (!linkExists(link))
                         {
                             _state.links.push_back(link);
@@ -453,243 +439,39 @@ int Graph::findLinkPosition(int id)
     return -1;
 }
 
-bool Graph::checkPosition(UiNodePtr node)
+void Graph::applyLayout(const std::vector<int>& outputNodeIndices)
 {
-    mx::ElementPtr elem = node->getElement();
-    return elem && !elem->getAttribute(mx::Element::XPOS_ATTRIBUTE).empty();
-}
-
-// Calculate the total vertical space the node level takes up
-float Graph::totalHeight(int level)
-{
-    float total = 0.f;
-    for (UiNodePtr node : _state.levelMap[level])
+    // If not auto-layouting and the first output node has saved positions, restore them.
+    if (!_autoLayout && !outputNodeIndices.empty())
     {
-        total += ed::GetNodeSize(node->getId()).y;
+        UiNodePtr firstOutput = _state.nodes[outputNodeIndices[0]];
+        mx::ElementPtr elem = firstOutput->getElement();
+        if (elem && !elem->getAttribute(mx::Element::XPOS_ATTRIBUTE).empty())
+        {
+            restorePositions();
+            return;
+        }
     }
-    return total;
-}
 
-// Set the y-position of node based on the starting position and the nodes above it
-void Graph::setYSpacing(int level, float startingPos)
-{
-    // set the y spacing for each node
-    float currPos = startingPos;
-    for (UiNodePtr node : _state.levelMap[level])
+    // Build output node ID list from output node indices.
+    std::vector<int> outputNodeIds;
+    for (int idx : outputNodeIndices)
     {
-        ImVec2 oldPos = ed::GetNodePosition(node->getId());
-        ed::SetNodePosition(node->getId(), ImVec2(oldPos.x, currPos));
-        currPos += ed::GetNodeSize(node->getId()).y + 40;
+        outputNodeIds.push_back(_state.nodes[idx]->getId());
     }
-}
 
-// Calculate the average y-position for a specific node level
-float Graph::findAvgY(const std::vector<UiNodePtr>& nodes)
-{
-    // find the mid point of node level grou[
-    float total = 0.f;
-    int count = 0;
-    for (UiNodePtr node : nodes)
+    // Compute layout directly from UI types.
+    LayoutResults results = _layout.compute(_state.nodes, _state.edges, outputNodeIds, _fontScale);
+
+    // Apply results to nodes.
+    for (const UiNodePtr& node : _state.nodes)
     {
-        ImVec2 pos = ed::GetNodePosition(node->getId());
-        ImVec2 size = ed::GetNodeSize(node->getId());
-
-        total += ((size.y + pos.y) + pos.y) / 2;
-        count++;
-    }
-    return count ? (total / count) : 0.0f;
-}
-
-void Graph::findYSpacing(float startY)
-{
-    // Assume level 0 is set
-    // For each level find the average y position of the previous level to use as a spacing guide
-    int i = 0;
-    for (std::pair<int, std::vector<UiNodePtr>> levelChunk : _state.levelMap)
-    {
-        if (_state.levelMap[i].size() > 0)
+        auto it = results.find(node->getId());
+        if (it != results.end())
         {
-            if (_state.levelMap[i][0]->getLevel() > 0)
-            {
-                int prevLevel = _state.levelMap[i].front()->getLevel() - 1;
-                float avgY = findAvgY(_state.levelMap[prevLevel]);
-                float height = totalHeight(_state.levelMap[i].front()->getLevel());
-                // calculate the starting position to be above the previous level's center so that it is evenly spaced on either side of the center
-                float startingPos = avgY - ((height + (_state.levelMap[i].size() * 20)) / 2) + startY;
-                setYSpacing(_state.levelMap[i].front()->getLevel(), startingPos);
-            }
-            else
-            {
-                setYSpacing(_state.levelMap[i].front()->getLevel(), startY);
-            }
-        }
-        ++i;
-    }
-}
-
-ImVec2 Graph::layoutPosition(UiNodePtr layoutNode, ImVec2 startingPos, bool initialLayout, int level)
-{
-    if (checkPosition(layoutNode) && !_autoLayout)
-    {
-        for (UiNodePtr node : _state.nodes)
-        {
-            // Since nodegraph nodes do not have MaterialX info they are placed based on their connected node
-            if (node->getNodeGraph() != nullptr)
-            {
-                std::vector<UiNodePtr> outputCon = node->getOutputConnections();
-                if (outputCon.size() > 0)
-                {
-                    ImVec2 outputPos = ed::GetNodePosition(outputCon[0]->getId());
-                    ed::SetNodePosition(node->getId(), ImVec2(outputPos.x - 400, outputPos.y));
-                    node->setPos(ImVec2(outputPos.x - 400, outputPos.y));
-                }
-            }
-            else
-            {
-                // Don't set position of group nodes
-                if (node->getMessage().empty())
-                {
-                    mx::ElementPtr elem = node->getElement();
-                    if (elem && elem->hasAttribute(mx::Element::XPOS_ATTRIBUTE))
-                    {
-                        float x = std::stof(elem->getAttribute(mx::Element::XPOS_ATTRIBUTE));
-                        if (elem->hasAttribute(mx::Element::YPOS_ATTRIBUTE))
-                        {
-                            float y = std::stof(elem->getAttribute(mx::Element::YPOS_ATTRIBUTE));
-                            x *= DEFAULT_NODE_SIZE.x;
-                            y *= DEFAULT_NODE_SIZE.y;
-                            ed::SetNodePosition(node->getId(), ImVec2(x, y));
-                            node->setPos(ImVec2(x, y));
-                        }
-                    }
-                }
-            }
-        }
-        return ImVec2(0.f, 0.f);
-    }
-    else
-    {
-        ImVec2 currPos = startingPos;
-        ImVec2 newPos = currPos;
-        if (layoutNode->getLevel() != -1)
-        {
-            if (layoutNode->getLevel() < level)
-            {
-                // Remove the old instance of the node from the map
-                int levelNum = 0;
-                int removeNum = -1;
-                for (UiNodePtr levelNode : _state.levelMap[layoutNode->getLevel()])
-                {
-                    if (levelNode->getName() == layoutNode->getName())
-                    {
-                        removeNum = levelNum;
-                    }
-                    levelNum++;
-                }
-                if (removeNum > -1)
-                {
-                    _state.levelMap[layoutNode->getLevel()].erase(_state.levelMap[layoutNode->getLevel()].begin() + removeNum);
-                }
-
-                layoutNode->setLevel(level);
-            }
-        }
-        else
-        {
-            layoutNode->setLevel(level);
-        }
-
-        auto it = _state.levelMap.find(layoutNode->getLevel());
-        if (it != _state.levelMap.end())
-        {
-            // Key already exists so add to it
-            bool nodeFound = false;
-            for (UiNodePtr node : it->second)
-            {
-                if (node && node->getName() == layoutNode->getName())
-                {
-                    nodeFound = true;
-                    break;
-                }
-            }
-            if (!nodeFound)
-            {
-                _state.levelMap[layoutNode->getLevel()].push_back(layoutNode);
-            }
-        }
-        else
-        {
-            // Insert new vector into key
-            std::vector<UiNodePtr> newValue = { layoutNode };
-            _state.levelMap.emplace(layoutNode->getLevel(), newValue);
-        }
-        std::vector<UiPinPtr> pins = layoutNode->getInputPins();
-        if (initialLayout)
-        {
-            // Check number of inputs that are connected to node
-            if (layoutNode->getInputConnect() > 0)
-            {
-                // Not top of node graph so stop recursion
-                if (pins.size() != 0 && layoutNode->getInput() == nullptr)
-                {
-                    for (size_t i = 0; i < pins.size(); i++)
-                    {
-                        // Get upstream node for all inputs
-                        newPos = startingPos;
-                        UiNodePtr nextNode = layoutNode->getConnectedNode(pins[i]->getName());
-                        if (nextNode)
-                        {
-                            startingPos.x = (1200.f - ((layoutNode->getLevel()) * 250)) * _fontScale;
-                            ed::SetNodePosition(layoutNode->getId(), startingPos);
-                            layoutNode->setPos(ImVec2(startingPos));
-
-                            // Call layout position on upstream node with newPos to the left of current node
-                            layoutPosition(nextNode, ImVec2(newPos.x, startingPos.y), initialLayout, layoutNode->getLevel() + 1);
-                        }
-                    }
-                }
-            }
-            else
-            {
-                startingPos.x = (1200.f - ((layoutNode->getLevel()) * 250)) * _fontScale;
-                layoutNode->setPos(ImVec2(startingPos));
-
-                // Set current node position
-                ed::SetNodePosition(layoutNode->getId(), ImVec2(startingPos));
-            }
-        }
-        return ImVec2(0.f, 0.f);
-    }
-}
-
-void Graph::layoutInputs()
-{
-    // Layout inputs after other nodes so that they can be all in a line on far left side of node graph
-    if (_state.levelMap.begin() != _state.levelMap.end())
-    {
-        int levelCount = -1;
-        for (std::pair<int, std::vector<UiNodePtr>> nodes : _state.levelMap)
-        {
-            ++levelCount;
-        }
-        ImVec2 startingPos = ed::GetNodePosition(_state.levelMap[levelCount].back()->getId());
-        startingPos.y += ed::GetNodeSize(_state.levelMap[levelCount].back()->getId()).y + 20;
-
-        for (UiNodePtr uiNode : _state.nodes)
-        {
-            if (uiNode->getOutputConnections().size() == 0 && (uiNode->getInput() != nullptr))
-            {
-                ed::SetNodePosition(uiNode->getId(), ImVec2(startingPos));
-                startingPos.y += ed::GetNodeSize(uiNode->getId()).y;
-                startingPos.y += 23;
-            }
-            else if (uiNode->getOutputConnections().size() == 0 && (uiNode->getNode() != nullptr))
-            {
-                if (uiNode->getNode()->getCategory() != mx::SURFACE_MATERIAL_NODE_STRING)
-                {
-                    layoutPosition(uiNode, ImVec2(1200, 750), _needsLayout, 0);
-                }
-            }
+            ImVec2 pos(it->second[0], it->second[1]);
+            ed::SetNodePosition(node->getId(), pos);
+            node->setPos(pos);
         }
     }
 }
@@ -1382,33 +1164,28 @@ void Graph::buildUiBaseGraph(mx::DocumentPtr doc)
     // Create edges for nodegraphs
     for (mx::NodeGraphPtr graph : nodeGraphs)
     {
+        int downNum = findNode(graph->getName(), "nodegraph");
+        if (downNum < 0)
+        {
+            continue;
+        }
         for (mx::InputPtr input : graph->getActiveInputs())
         {
-            int downNum = -1;
             int upNum = -1;
             mx::string nodeGraphName = input->getNodeGraphString();
             mx::NodePtr connectedNode = input->getConnectedNode();
             if (!nodeGraphName.empty())
             {
-                downNum = findNode(graph->getName(), "nodegraph");
                 upNum = findNode(nodeGraphName, "nodegraph");
             }
             else if (connectedNode)
             {
-                downNum = findNode(graph->getName(), "nodegraph");
                 upNum = findNode(connectedNode->getName(), "node");
             }
 
-            if (upNum > -1)
+            if (upNum >= 0)
             {
-                UiEdge newEdge = UiEdge(_state.nodes[upNum], _state.nodes[downNum], input);
-                if (!edgeExists(newEdge))
-                {
-                    _state.nodes[downNum]->getEdges().push_back(newEdge);
-                    _state.nodes[downNum]->setInputNodeNum(1);
-                    _state.nodes[upNum]->setOutputConnection(_state.nodes[downNum]);
-                    _state.edges.push_back(newEdge);
-                }
+                createEdge(_state.nodes[upNum], _state.nodes[downNum], input);
             }
         }
     }
@@ -1419,43 +1196,30 @@ void Graph::buildUiBaseGraph(mx::DocumentPtr doc)
         mx::NodeDefPtr nD = node->getNodeDef(node->getName());
         for (mx::InputPtr input : node->getActiveInputs())
         {
-
             mx::string nodeGraphName = input->getNodeGraphString();
             mx::NodePtr connectedNode = input->getConnectedNode();
             mx::OutputPtr connectedOutput = input->getConnectedOutput();
             int upNum = -1;
-            int downNum = -1;
+            int downNum = findNode(node->getName(), "node");
             if (!nodeGraphName.empty())
             {
-
                 upNum = findNode(nodeGraphName, "nodegraph");
-                downNum = findNode(node->getName(), "node");
             }
             else if (connectedNode)
             {
                 upNum = findNode(connectedNode->getName(), "node");
-                downNum = findNode(node->getName(), "node");
             }
             else if (connectedOutput)
             {
                 upNum = findNode(connectedOutput->getName(), "output");
-                downNum = findNode(node->getName(), "node");
             }
             else if (!input->getInterfaceName().empty())
             {
                 upNum = findNode(input->getInterfaceName(), "input");
-                downNum = findNode(node->getName(), "node");
             }
-            if (upNum != -1)
+            if (upNum >= 0 && downNum >= 0)
             {
-                UiEdge newEdge = UiEdge(_state.nodes[upNum], _state.nodes[downNum], input);
-                if (!edgeExists(newEdge))
-                {
-                    _state.nodes[downNum]->getEdges().push_back(newEdge);
-                    _state.nodes[downNum]->setInputNodeNum(1);
-                    _state.nodes[upNum]->setOutputConnection(_state.nodes[downNum]);
-                    _state.edges.push_back(newEdge);
-                }
+                createEdge(_state.nodes[upNum], _state.nodes[downNum], input);
             }
         }
     }
@@ -1554,61 +1318,34 @@ void Graph::buildUiNodeGraph(const mx::NodeGraphPtr& nodeGraphs)
                     {
                         downstreamType = "output";
                     }
-                    int upNode = findNode(upName, upstreamType);
-                    int downNode = findNode(downName, downstreamType);
-                    if (downNode > 0 && upNode > 0 && _state.nodes[downNode]->getOutput())
+                    int upNum = findNode(upName, upstreamType);
+                    int downNum = findNode(downName, downstreamType);
+
+                    // Create edges for output nodes (no connecting input)
+                    if (downNum >= 0 && upNum >= 0 && _state.nodes[downNum]->getOutput())
                     {
-                        // Create edges for the output nodes
-                        UiEdge newEdge = UiEdge(_state.nodes[upNode], _state.nodes[downNode], nullptr);
-                        if (!edgeExists(newEdge))
-                        {
-                            _state.nodes[downNode]->getEdges().push_back(newEdge);
-                            _state.nodes[downNode]->setInputNodeNum(1);
-                            _state.nodes[upNode]->setOutputConnection(_state.nodes[downNode]);
-                            _state.edges.push_back(newEdge);
-                        }
+                        createEdge(_state.nodes[upNum], _state.nodes[downNum], nullptr);
                     }
-                    else if (connectingElem)
+                    else if (connectingElem && upNum >= 0 && downNum >= 0)
                     {
-
                         mx::InputPtr connectingInput = connectingElem->asA<mx::Input>();
-
                         if (connectingInput)
                         {
-                            if ((upNode >= 0) && (downNode >= 0))
-                            {
-                                UiEdge newEdge = UiEdge(_state.nodes[upNode], _state.nodes[downNode], connectingInput);
-                                if (!edgeExists(newEdge))
-                                {
-                                    _state.nodes[downNode]->getEdges().push_back(newEdge);
-                                    _state.nodes[downNode]->setInputNodeNum(1);
-                                    _state.nodes[upNode]->setOutputConnection(_state.nodes[downNode]);
-                                    _state.edges.push_back(newEdge);
-                                }
-                            }
+                            createEdge(_state.nodes[upNum], _state.nodes[downNum], connectingInput);
                         }
                     }
-                    if (upstreamNode)
+
+                    // Connect input nodes for upstream node
+                    if (upstreamNode && upNum >= 0)
                     {
-                        std::vector<mx::InputPtr> ins = upstreamNode->getActiveInputs();
-                        for (mx::InputPtr input : ins)
+                        for (mx::InputPtr input : upstreamNode->getActiveInputs())
                         {
-                            // Connect input nodes
                             if (input->hasInterfaceName())
                             {
-                                std::string interfaceName = input->getInterfaceName();
-                                int newUp = findNode(interfaceName, "input");
+                                int newUp = findNode(input->getInterfaceName(), "input");
                                 if (newUp >= 0)
                                 {
-                                    mx::InputPtr inputP = std::make_shared<mx::Input>(downstreamElem, input->getName());
-                                    UiEdge newEdge = UiEdge(_state.nodes[newUp], _state.nodes[upNode], input);
-                                    if (!edgeExists(newEdge))
-                                    {
-                                        _state.nodes[upNode]->getEdges().push_back(newEdge);
-                                        _state.nodes[upNode]->setInputNodeNum(1);
-                                        _state.nodes[newUp]->setOutputConnection(_state.nodes[upNode]);
-                                        _state.edges.push_back(newEdge);
-                                    }
+                                    createEdge(_state.nodes[newUp], _state.nodes[upNum], input);
                                 }
                             }
                         }
@@ -1619,68 +1356,49 @@ void Graph::buildUiNodeGraph(const mx::NodeGraphPtr& nodeGraphs)
             }
         }
 
-        // Second pass to catch all of the connections that arent part of an output
+        // Second pass to catch all of the connections that aren't part of an output
         for (mx::ElementPtr elem : children)
         {
             mx::NodePtr node = elem->asA<mx::Node>();
-            mx::InputPtr inputElem = elem->asA<mx::Input>();
             mx::OutputPtr output = elem->asA<mx::Output>();
             if (node)
             {
-                std::vector<mx::InputPtr> inputs = node->getActiveInputs();
-                for (mx::InputPtr input : inputs)
+                for (mx::InputPtr input : node->getActiveInputs())
                 {
-                    mx::NodePtr upNode = input->getConnectedNode();
-                    if (upNode)
+                    mx::NodePtr connectedNode = input->getConnectedNode();
+                    int downNum = findNode(node->getName(), "node");
+                    if (downNum < 0)
                     {
-                        int upNum = findNode(upNode->getName(), "node");
-                        int downNode = findNode(node->getName(), "node");
-                        if ((upNum >= 0) && (downNode >= 0))
+                        continue;
+                    }
+                    if (connectedNode)
+                    {
+                        int upNum = findNode(connectedNode->getName(), "node");
+                        if (upNum >= 0)
                         {
-
-                            UiEdge newEdge = UiEdge(_state.nodes[upNum], _state.nodes[downNode], input);
-                            if (!edgeExists(newEdge))
-                            {
-                                _state.nodes[downNode]->getEdges().push_back(newEdge);
-                                _state.nodes[downNode]->setInputNodeNum(1);
-                                _state.nodes[upNum]->setOutputConnection(_state.nodes[downNode]);
-                                _state.edges.push_back(newEdge);
-                            }
+                            createEdge(_state.nodes[upNum], _state.nodes[downNum], input);
                         }
                     }
                     else if (input->getInterfaceInput())
                     {
                         int upNum = findNode(input->getInterfaceInput()->getName(), "input");
-                        int downNode = findNode(node->getName(), "node");
-                        if ((upNum >= 0) && (downNode >= 0))
+                        if (upNum >= 0)
                         {
-
-                            UiEdge newEdge = UiEdge(_state.nodes[upNum], _state.nodes[downNode], input);
-                            if (!edgeExists(newEdge))
-                            {
-                                _state.nodes[downNode]->getEdges().push_back(newEdge);
-                                _state.nodes[downNode]->setInputNodeNum(1);
-                                _state.nodes[upNum]->setOutputConnection(_state.nodes[downNode]);
-                                _state.edges.push_back(newEdge);
-                            }
+                            createEdge(_state.nodes[upNum], _state.nodes[downNum], input);
                         }
                     }
                 }
             }
             else if (output)
             {
-                mx::NodePtr upNode = output->getConnectedNode();
-                if (upNode)
+                mx::NodePtr connectedNode = output->getConnectedNode();
+                if (connectedNode)
                 {
-                    int upNum = findNode(upNode->getName(), "node");
-                    int downNode = findNode(output->getName(), "output");
-                    UiEdge newEdge = UiEdge(_state.nodes[upNum], _state.nodes[downNode], nullptr);
-                    if (!edgeExists(newEdge))
+                    int upNum = findNode(connectedNode->getName(), "node");
+                    int downNum = findNode(output->getName(), "output");
+                    if (upNum >= 0 && downNum >= 0)
                     {
-                        _state.nodes[downNode]->getEdges().push_back(newEdge);
-                        _state.nodes[downNode]->setInputNodeNum(1);
-                        _state.nodes[upNum]->setOutputConnection(_state.nodes[downNode]);
-                        _state.edges.push_back(newEdge);
+                        createEdge(_state.nodes[upNum], _state.nodes[downNum], nullptr);
                     }
                 }
             }
@@ -1749,35 +1467,38 @@ void Graph::positionPasteBin(ImVec2 pos)
     }
 }
 
-void Graph::createEdge(UiNodePtr upNode, UiNodePtr downNode, mx::InputPtr connectingInput)
+bool Graph::createEdge(UiNodePtr upNode, UiNodePtr downNode, mx::InputPtr connectingInput)
 {
-    if (downNode->getOutput())
+    if (!upNode || !downNode)
     {
-        // Create edges for the output nodes
-        UiEdge newEdge = UiEdge(upNode, downNode, nullptr);
-        if (!edgeExists(newEdge))
-        {
-            downNode->getEdges().push_back(newEdge);
-            downNode->setInputNodeNum(1);
-            upNode->setOutputConnection(downNode);
-            _state.edges.push_back(newEdge);
-        }
+        return false;
     }
-    else if (connectingInput)
+
+    UiEdge newEdge = UiEdge(upNode, downNode, connectingInput);
+    if (edgeExists(newEdge))
     {
-        UiEdge newEdge = UiEdge(upNode, downNode, connectingInput);
-        downNode->getEdges().push_back(newEdge);
-        downNode->setInputNodeNum(1);
-        upNode->setOutputConnection(downNode);
-        _state.edges.push_back(newEdge);
+        return false;
     }
+
+    downNode->getEdges().push_back(newEdge);
+    upNode->setOutputConnection(downNode);
+    _state.edges.push_back(newEdge);
+    return true;
 }
 
 void Graph::copyUiNode(UiNodePtr node)
 {
     UiNodePtr copyNode = std::make_shared<UiNode>(mx::EMPTY_STRING, int(_state.nextUiId + 1));
     ++_state.nextUiId;
-    if (node->getElement())
+    if (node->getNodeGraph())
+    {
+        _graphDoc->addNodeGraph();
+        std::string nodeGraphName = _graphDoc->getNodeGraphs().back()->getName();
+        copyNode->setNodeGraph(_graphDoc->getNodeGraphs().back());
+        copyNode->setName(nodeGraphName);
+        copyNodeGraph(node, copyNode);
+    }
+    else if (node->getElement())
     {
         std::string newName = _state.graphElem->createValidChildName(node->getName());
         if (node->getNode())
@@ -1806,17 +1527,8 @@ void Graph::copyUiNode(UiNodePtr node)
         copyNode->getElement()->setName(newName);
         copyNode->setName(newName);
     }
-    else if (node->getNodeGraph())
-    {
-        _graphDoc->addNodeGraph();
-        std::string nodeGraphName = _graphDoc->getNodeGraphs().back()->getName();
-        copyNode->setNodeGraph(_graphDoc->getNodeGraphs().back());
-        copyNode->setName(nodeGraphName);
-        copyNodeGraph(node, copyNode);
-    }
-    setUiNodeInfo(copyNode, node->getType(), node->getCategory());
     _copiedNodes[node] = copyNode;
-    _state.nodes.push_back(copyNode);
+    setUiNodeInfo(copyNode, node->getType(), node->getCategory());
 }
 
 void Graph::copyNodeGraph(UiNodePtr origGraph, UiNodePtr copyGraph)
@@ -1904,8 +1616,7 @@ void Graph::copyInputs()
                         copyNode->getOutput()->setConnectedNode(upNode->getNode());
                     }
 
-                    // Update input node num and output connections
-                    copyNode->setInputNodeNum(1);
+                    // Update output connections
                     upNode->setOutputConnection(copyNode);
                 }
                 else if (pin->getInput())
@@ -2165,8 +1876,9 @@ void Graph::drawOutputPins(UiNodePtr node, const std::string& longestInputLabel)
             longestLabel = pin->getName();
     }
 
-    // Create output pins
-    float nodeWidth = ImGui::CalcTextSize(longestLabel.c_str()).x;
+    // Create output pins with extra right padding
+    const float outputPinExtraPad = 20.0f;
+    float nodeWidth = ImGui::CalcTextSize(longestLabel.c_str()).x + outputPinExtraPad;
     for (UiPinPtr pin : node->getOutputPins())
     {
         const float indent = nodeWidth - ImGui::CalcTextSize(pin->getName().c_str()).x;
@@ -2213,13 +1925,22 @@ void Graph::drawInputPin(UiPinPtr pin)
     ImGui::PopID();
     ed::EndPin();
 
-    ImGui::SameLine();
+    ImGui::SameLine(0, 5.0f);
     ImGui::TextUnformatted(pin->getName().c_str());
 }
 
 std::vector<int> Graph::createNodes(bool nodegraph)
 {
     std::vector<int> outputNum;
+
+    const auto& nodeEditorStyle = ed::GetStyle();
+    const float hdrInset = nodeEditorStyle.NodeBorderWidth;
+    const float hdrPadL = nodeEditorStyle.NodePadding.x - hdrInset;
+    const float hdrPadT = nodeEditorStyle.NodePadding.y - hdrInset;
+    const float hdrPadB = hdrPadT;
+    const float hdrTextIndent = 4.0f;
+    const float hdrBottomSpacing = hdrPadB;
+    const float hdrRounding = std::max(nodeEditorStyle.NodeRounding - hdrInset, 0.0f);
 
     for (UiNodePtr node : _state.nodes)
     {
@@ -2237,15 +1958,18 @@ std::vector<int> Graph::createNodes(bool nodegraph)
                 ImGui::PushID(node->getId());
                 ImGui::SetWindowFontScale(1.2f * _fontScale);
                 ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, -8.0),
-                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - 9.f, ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(55, 55, 55, 255)), 12.f);
+                    ImGui::GetCursorScreenPos() + ImVec2(-hdrPadL, -hdrPadT),
+                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - hdrPadL - 2.f * hdrInset, ImGui::GetTextLineHeight() + hdrPadB),
+                    ImColor(ImColor(55, 55, 55, 255)), hdrRounding);
                 ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, 3),
-                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - 9.f, ImGui::GetTextLineHeight() + 2.f),
+                    ImGui::GetCursorScreenPos() + ImVec2(-hdrPadL, 3),
+                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - hdrPadL - 2.f * hdrInset, ImGui::GetTextLineHeight() + hdrPadB),
                     ImColor(ImColor(55, 55, 55, 255)), 0.f);
+                ImGui::Indent(hdrTextIndent);
                 ImGui::Text("%s", node->getName().c_str());
+                ImGui::Unindent(hdrTextIndent);
                 ImGui::SetWindowFontScale(_fontScale);
+                ImGui::Dummy(ImVec2(0, hdrBottomSpacing));
 
                 std::string longestInputLabel = node->getName();
                 for (UiPinPtr pin : node->getInputPins())
@@ -2305,15 +2029,18 @@ std::vector<int> Graph::createNodes(bool nodegraph)
                 ImGui::PushID(node->getId());
                 ImGui::SetWindowFontScale(1.2f * _fontScale);
                 ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0f, -8.0f),
-                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - 9.f, ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(85, 85, 85, 255)), 12.f);
+                    ImGui::GetCursorScreenPos() + ImVec2(-hdrPadL, -hdrPadT),
+                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - hdrPadL - 2.f * hdrInset, ImGui::GetTextLineHeight() + hdrPadB),
+                    ImColor(ImColor(85, 85, 85, 255)), hdrRounding);
                 ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0f, 3.f),
-                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - 9.f, ImGui::GetTextLineHeight() + 2.f),
+                    ImGui::GetCursorScreenPos() + ImVec2(-hdrPadL, 3.f),
+                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - hdrPadL - 2.f * hdrInset, ImGui::GetTextLineHeight() + hdrPadB),
                     ImColor(ImColor(85, 85, 85, 255)), 0.f);
+                ImGui::Indent(hdrTextIndent);
                 ImGui::Text("%s", node->getName().c_str());
+                ImGui::Unindent(hdrTextIndent);
                 ImGui::SetWindowFontScale(_fontScale);
+                ImGui::Dummy(ImVec2(0, hdrBottomSpacing));
 
                 outputType = node->getInput()->getType();
                 for (UiPinPtr pin : node->getInputPins())
@@ -2375,15 +2102,18 @@ std::vector<int> Graph::createNodes(bool nodegraph)
                 ImGui::PushID(node->getId());
                 ImGui::SetWindowFontScale(1.2f * _fontScale);
                 ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, -8.0),
-                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - 9.f, ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(35, 35, 35, 255)), 12.f);
+                    ImGui::GetCursorScreenPos() + ImVec2(-hdrPadL, -hdrPadT),
+                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - hdrPadL - 2.f * hdrInset, ImGui::GetTextLineHeight() + hdrPadB),
+                    ImColor(ImColor(35, 35, 35, 255)), hdrRounding);
                 ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, 3),
-                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - 9.f, ImGui::GetTextLineHeight() + 2.f),
+                    ImGui::GetCursorScreenPos() + ImVec2(-hdrPadL, 3),
+                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - hdrPadL - 2.f * hdrInset, ImGui::GetTextLineHeight() + hdrPadB),
                     ImColor(ImColor(35, 35, 35, 255)), 0);
+                ImGui::Indent(hdrTextIndent);
                 ImGui::Text("%s", node->getName().c_str());
+                ImGui::Unindent(hdrTextIndent);
                 ImGui::SetWindowFontScale(_fontScale);
+                ImGui::Dummy(ImVec2(0, hdrBottomSpacing));
 
                 outputType = node->getOutput()->getType();
 
@@ -2450,15 +2180,18 @@ std::vector<int> Graph::createNodes(bool nodegraph)
                 ImGui::PushID(node->getId());
                 ImGui::SetWindowFontScale(1.2f * _fontScale);
                 ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, -8.0),
-                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - 9.f, ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(35, 35, 35, 255)), 12.f);
+                    ImGui::GetCursorScreenPos() + ImVec2(-hdrPadL, -hdrPadT),
+                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - hdrPadL - 2.f * hdrInset, ImGui::GetTextLineHeight() + hdrPadB),
+                    ImColor(ImColor(35, 35, 35, 255)), hdrRounding);
                 ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, 3),
-                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - 9.f, ImGui::GetTextLineHeight() + 2.f),
+                    ImGui::GetCursorScreenPos() + ImVec2(-hdrPadL, 3),
+                    ImGui::GetCursorScreenPos() + ImVec2(ed::GetNodeSize(node->getId()).x - hdrPadL - 2.f * hdrInset, ImGui::GetTextLineHeight() + hdrPadB),
                     ImColor(ImColor(35, 35, 35, 255)), 0);
+                ImGui::Indent(hdrTextIndent);
                 ImGui::Text("%s", node->getName().c_str());
+                ImGui::Unindent(hdrTextIndent);
                 ImGui::SetWindowFontScale(_fontScale);
+                ImGui::Dummy(ImVec2(0, hdrBottomSpacing));
                 for (UiPinPtr pin : node->getInputPins())
                 {
                     if (node->getConnectedNode(pin->getName()) != nullptr)
@@ -2580,12 +2313,12 @@ bool Graph::checkCanAddLink(ed::PinId startPinId, ed::PinId endPinId)
 
     int upNode = getNodeId(outputPinId);
     int downNode = getNodeId(inputPinId);
-    UiNodePtr uiDownNode = _state.nodes[downNode];
-    UiNodePtr uiUpNode = _state.nodes[upNode];
-    if (!uiDownNode || !uiUpNode)
+    if (upNode < 0 || downNode < 0)
     {
         return false;
     }
+    UiNodePtr uiDownNode = _state.nodes[downNode];
+    UiNodePtr uiUpNode = _state.nodes[upNode];
 
     // Make sure there is an implementation for node
     const mx::ShaderGenerator& shadergen = _renderer->getGenContext().getShaderGenerator();
@@ -2635,12 +2368,12 @@ void Graph::addLink(ed::PinId startPinId, ed::PinId endPinId)
 
     int upNode = getNodeId(outputPinId);
     int downNode = getNodeId(inputPinId);
-    UiNodePtr uiDownNode = _state.nodes[downNode];
-    UiNodePtr uiUpNode = _state.nodes[upNode];
-    if (!uiDownNode || !uiUpNode)
+    if (upNode < 0 || downNode < 0)
     {
         return;
     }
+    UiNodePtr uiDownNode = _state.nodes[downNode];
+    UiNodePtr uiUpNode = _state.nodes[upNode];
 
     // If the accepting node already has a link, remove it
     if (inputPin->getConnected())
@@ -2659,10 +2392,7 @@ void Graph::addLink(ed::PinId startPinId, ed::PinId endPinId)
     }
 
     // Since we accepted new link, lets add one to our list of links.
-    Link link;
-    link._startAttr = start_attr;
-    link._endAttr = end_attr;
-    _state.links.push_back(link);
+    _state.links.push_back(Link(_state.nextUiId++, start_attr, end_attr));
     _frameCount = ImGui::GetFrameCount();
     _renderer->setMaterialCompilation(true);
 
@@ -2785,50 +2515,46 @@ void Graph::addLink(ed::PinId startPinId, ed::PinId endPinId)
             }
         }
 
-        // Create new edge and set edge information
-        createEdge(_state.nodes[upNode], _state.nodes[downNode], connectingInput);
-    }
-    else if (_state.nodes[downNode]->getOutput() != nullptr)
-    {
-        mx::InputPtr connectingInput = nullptr;
-        _state.nodes[downNode]->getOutput()->setConnectedNode(_state.nodes[upNode]->getNode());
-
-        // Create new edge and set edge information
+        // Create new edge and set edge information.
         createEdge(_state.nodes[upNode], _state.nodes[downNode], connectingInput);
     }
     else
     {
-        // Create new edge and set edge info
-        UiEdge newEdge = UiEdge(_state.nodes[upNode], _state.nodes[downNode], nullptr);
-        if (!edgeExists(newEdge))
+        if (_state.nodes[downNode]->getOutput() != nullptr)
         {
-            _state.nodes[downNode]->getEdges().push_back(newEdge);
-            _state.edges.push_back(newEdge);
-
-            // Update input node num and output connections
-            _state.nodes[downNode]->setInputNodeNum(1);
-            _state.nodes[upNode]->setOutputConnection(_state.nodes[downNode]);
+            _state.nodes[downNode]->getOutput()->setConnectedNode(_state.nodes[upNode]->getNode());
         }
+
+        // Create new edge and set edge information.
+        createEdge(_state.nodes[upNode], _state.nodes[downNode], nullptr);
     }
 }
 
 void Graph::removeEdge(int downNode, int upNode, UiPinPtr pin)
 {
-    int num = _state.nodes[downNode]->getEdgeIndex(_state.nodes[upNode]->getId(), pin);
-    if (num != -1)
+    if (downNode < 0 || downNode >= (int) _state.nodes.size() ||
+        upNode < 0 || upNode >= (int) _state.nodes.size())
     {
-        if (_state.nodes[downNode]->getEdges().size() == 1)
-        {
-            _state.nodes[downNode]->getEdges().erase(_state.nodes[downNode]->getEdges().begin() + 0);
-        }
-        else if (_state.nodes[downNode]->getEdges().size() > 1)
-        {
-            _state.nodes[downNode]->getEdges().erase(_state.nodes[downNode]->getEdges().begin() + num);
-        }
+        return;
     }
 
-    _state.nodes[downNode]->setInputNodeNum(-1);
+    _state.nodes[downNode]->eraseEdge(_state.nodes[upNode]->getId(), pin);
     _state.nodes[upNode]->removeOutputConnection(_state.nodes[downNode]->getName());
+
+    // Remove from the global edge list to keep it in sync.
+    int upId = _state.nodes[upNode]->getId();
+    int downId = _state.nodes[downNode]->getId();
+    mx::InputPtr pinInput = pin ? pin->getInput() : nullptr;
+    for (auto it = _state.edges.begin(); it != _state.edges.end(); ++it)
+    {
+        if (it->getUp()->getId() == upId &&
+            it->getDown()->getId() == downId &&
+            it->getInput() == pinInput)
+        {
+            _state.edges.erase(it);
+            break;
+        }
+    }
 }
 
 void Graph::deleteLinkInfo(int startAttr, int endAttr)
@@ -2935,8 +2661,11 @@ void Graph::deleteLink(ed::LinkId deletedLinkId)
 
         // Then remove link from your data.
         int pos = findLinkPosition(link_id);
+        if (pos < 0)
+        {
+            return;
+        }
 
-        // Link start -1 equals node num
         Link currLink = _state.links[pos];
         deleteLinkInfo(currLink._startAttr, currLink._endAttr);
         _state.links.erase(_state.links.begin() + pos);
@@ -2952,20 +2681,7 @@ void Graph::deleteNode(UiNodePtr node)
         if (upNode)
         {
             upNode->removeOutputConnection(node->getName());
-            int num = node->getEdgeIndex(upNode->getId(), inputPin);
-
-            // Erase edge between node and up node
-            if (num != -1)
-            {
-                if (node->getEdges().size() == 1)
-                {
-                    node->getEdges().erase(node->getEdges().begin() + 0);
-                }
-                else if (node->getEdges().size() > 1)
-                {
-                    node->getEdges().erase(node->getEdges().begin() + num);
-                }
-            }
+            node->eraseEdge(upNode->getId(), inputPin);
         }
     }
 
@@ -3011,29 +2727,29 @@ void Graph::deleteNode(UiNodePtr node)
                 pin->getInput()->setValueString(val->getValueString());
             }
 
-            int num = pin->getUiNode()->getEdgeIndex(node->getId(), pin);
-            if (num != -1)
-            {
-                if (pin->getUiNode()->getEdges().size() == 1)
-                {
-                    pin->getUiNode()->getEdges().erase(pin->getUiNode()->getEdges().begin() + 0);
-                }
-                else if (pin->getUiNode()->getEdges().size() > 1)
-                {
-                    pin->getUiNode()->getEdges().erase(pin->getUiNode()->getEdges().begin() + num);
-                }
-            }
-
-            pin->getUiNode()->setInputNodeNum(-1);
-
-            // Not really necessary since it will be deleted
+            pin->getUiNode()->eraseEdge(node->getId(), pin);
             node->removeOutputConnection(pin->getUiNode()->getName());
+        }
+    }
+
+    // Remove all edges referencing this node from the global edge list.
+    int nodeId = node->getId();
+    for (size_t i = _state.edges.size(); i > 0; --i)
+    {
+        if (_state.edges[i - 1].getUp()->getId() == nodeId ||
+            _state.edges[i - 1].getDown()->getId() == nodeId)
+        {
+            _state.edges.erase(_state.edges.begin() + (i - 1));
         }
     }
 
     // Remove from NodeGraph
     // All link information is handled in delete link which is called before this
     int nodeNum = findNode(node->getId());
+    if (nodeNum < 0)
+    {
+        return;
+    }
     _state.graphElem->removeChild(node->getName());
     _state.nodes.erase(_state.nodes.begin() + nodeNum);
 }
@@ -3137,6 +2853,8 @@ void Graph::initializeGraph()
     _state.graphElem = _graphDoc;
     _state.isCompoundNodeGraph = false;
     _prevUiNode = nullptr;
+    _currUiNode = nullptr;
+    _currRenderNode = nullptr;
 
     // Set the display name from the current material filename.
     mx::FilePath materialPath(_materialFilename);
@@ -3216,6 +2934,24 @@ void Graph::graphButtons()
             if (ImGui::MenuItem("Auto Layout"))
             {
                 _autoLayout = true;
+                _needsNavigation = true;
+            }
+            ImGui::Separator();
+            Layout::Options& opts = _layout.options;
+            if (ImGui::Checkbox("Insert Virtual Nodes", &opts.insertVirtualNodes))
+            {
+                _autoLayout = true;
+                _needsNavigation = true;
+            }
+            if (ImGui::Checkbox("Minimize Crossings", &opts.minimizeCrossings))
+            {
+                _autoLayout = true;
+                _needsNavigation = true;
+            }
+            if (ImGui::Checkbox("Refine Positions", &opts.refinePositions))
+            {
+                _autoLayout = true;
+                _needsNavigation = true;
             }
             ImGui::EndMenu();
         }
@@ -3700,6 +3436,14 @@ void Graph::propertyEditor()
                             if (!input->getConnected())
                             {
                                 showPropertyEditorValue(_currUiNode, input->getInput(), uiProperties);
+
+                                // Update pin to reference the node's input if one was created
+                                // during editing, so that subsequent frames read the correct value.
+                                mx::InputPtr nodeInput = _currUiNode->getNode()->getInput(input->getName());
+                                if (nodeInput && nodeInput != input->getInput())
+                                {
+                                    input->setElement(nodeInput);
+                                }
                             }
                             else
                             {
@@ -4006,13 +3750,19 @@ void Graph::addNodePopup(bool cursor)
                 // Allow spaces to be used to search for node names
                 std::replace(subs.begin(), subs.end(), ' ', '_');
 
-                if (subs.size() == 0 || str.find(subs) != std::string::npos)
+                std::string strLower(str);
+                std::string subsLower(subs);
+                std::transform(strLower.begin(), strLower.end(), strLower.begin(), ::tolower);
+                std::transform(subsLower.begin(), subsLower.end(), subsLower.begin(), ::tolower);
+
+                if (subs.size() == 0 || strLower.find(subsLower) != std::string::npos)
                 {
                     if (ImGui::MenuItem(getUserNodeDefName(nodeName).c_str()) || (ImGui::IsItemFocused() && ImGui::IsKeyPressedMap(ImGuiKey_Enter)))
                     {
                         addNode(node.getCategory(), getUserNodeDefName(nodeName), node.getType());
                         _addNewNode = true;
                         memset(input, '\0', sizeof(input));
+                        ImGui::CloseCurrentPopup();
                     }
                 }
             }
@@ -4030,6 +3780,7 @@ void Graph::addNodePopup(bool cursor)
                         {
                             addNode(node.getCategory(), getUserNodeDefName(name), node.getType());
                             _addNewNode = true;
+                            ImGui::CloseCurrentPopup();
                         }
                     }
                     else
@@ -4040,6 +3791,7 @@ void Graph::addNodePopup(bool cursor)
                             {
                                 addNode(node.getCategory(), getUserNodeDefName(name), node.getType());
                                 _addNewNode = true;
+                                ImGui::CloseCurrentPopup();
                             }
                             ImGui::EndMenu();
                         }
@@ -4408,6 +4160,7 @@ void Graph::drawGraph(ImVec2 mousePos)
             else if (!_state.nodes.empty())
             {
                 ed::SetNodePosition(_state.nodes.back()->getId(), canvasPos);
+                ed::SelectNode(_state.nodes.back()->getId());
             }
             _copiedNodes.clear();
             _addNewNode = false;
@@ -4425,35 +4178,32 @@ void Graph::drawGraph(ImVec2 mousePos)
             }
         }
 
-        // Layout and link graph when needed
-        if (_needsLayout || _autoLayout)
+        // Layout and link graph when needed.
+        // When _needsLayout is set, new nodes exist whose rendered sizes are
+        // unknown. We use a two-frame approach:
+        //   Frame 1 (sizing): position nodes off-screen so the editor can
+        //                     compute their rendered sizes.
+        //   Frame 2 (layout): run the actual layout with accurate sizes.
+        if (_needsLayout && !_layoutPending)
         {
-            _state.links.clear();
-            _state.levelMap.clear();
-            float y = 0.f;
-
-            // Start layout with output or material nodes since layout algorithm works right to left
-            for (int outN : outputNum)
+            // Sizing frame: place nodes off-screen and link the graph so the
+            // editor measures their rendered dimensions.
+            for (const UiNodePtr& node : _state.nodes)
             {
-                layoutPosition(_state.nodes[outN], ImVec2(1200.f, y), true, 0);
-                y += 350;
-            }
-
-            // If there are no output or material nodes but the nodes have position layout each individual node
-            if (_state.nodes.size() > 0)
-            {
-
-                if (outputNum.size() == 0 && _state.nodes[0]->getElement())
-                {
-                    for (UiNodePtr node : _state.nodes)
-                    {
-                        layoutPosition(node, ImVec2(0, 0), true, 0);
-                    }
-                }
+                ed::SetNodePosition(node->getId(), ImVec2(-10000.0f, -10000.0f));
             }
             linkGraph();
-            findYSpacing(0.f);
-            layoutInputs();
+            _layoutPending = true;
+            _needsLayout = false;
+        }
+        else if (_layoutPending || _autoLayout)
+        {
+            // Layout frame: node sizes are now available from ed::GetNodeSize().
+            _state.links.clear();
+            applyLayout(outputNum);
+            linkGraph();
+            _layoutPending = false;
+            _autoLayout = false;
         }
         if (_delete)
         {
@@ -4463,12 +4213,8 @@ void Graph::drawGraph(ImVec2 mousePos)
         }
         connectLinks();
 
-        // Reset layout flags after processing
-        _needsLayout = false;
-        _autoLayout = false;
-
-        // Navigate to content when requested
-        if (_needsNavigation)
+        // Navigate to content when requested (deferred until after layout).
+        if (_needsNavigation && !_layoutPending)
         {
             ed::NavigateToContent();
             _needsNavigation = false;
@@ -4711,7 +4457,6 @@ void Graph::drawGraph(ImVec2 mousePos)
                     _state.name += " (Read Only)";
                     _popup = true;
                 }
-
                 _needsLayout = true;
                 _needsNavigation = true;
             }
@@ -4791,58 +4536,33 @@ int Graph::findNode(int nodeId)
     return -1;
 }
 
-bool Graph::edgeExists(UiEdge newEdge)
+bool Graph::edgeExists(const UiEdge& newEdge)
 {
-    if (_state.edges.size() > 0)
+    for (const UiEdge& edge : _state.edges)
     {
-        for (UiEdge edge : _state.edges)
+        if (edge.getInput() != newEdge.getInput())
         {
-            if (edge.getDown()->getId() == newEdge.getDown()->getId())
-            {
-                if (edge.getUp()->getId() == newEdge.getUp()->getId())
-                {
-                    if (edge.getInput() == newEdge.getInput())
-                    {
-                        return true;
-                    }
-                }
-            }
-            else if (edge.getUp()->getId() == newEdge.getDown()->getId())
-            {
-                if (edge.getDown()->getId() == newEdge.getUp()->getId())
-                {
-                    if (edge.getInput() == newEdge.getInput())
-                    {
-                        return true;
-                    }
-                }
-            }
+            continue;
         }
-    }
-    else
-    {
-        return false;
+        if ((edge.getDown()->getId() == newEdge.getDown()->getId() &&
+             edge.getUp()->getId() == newEdge.getUp()->getId()) ||
+            (edge.getUp()->getId() == newEdge.getDown()->getId() &&
+             edge.getDown()->getId() == newEdge.getUp()->getId()))
+        {
+            return true;
+        }
     }
     return false;
 }
 
-bool Graph::linkExists(Link newLink)
+bool Graph::linkExists(const Link& newLink)
 {
     for (const auto& link : _state.links)
     {
-        if (link._startAttr == newLink._startAttr)
+        if ((link._startAttr == newLink._startAttr && link._endAttr == newLink._endAttr) ||
+            (link._startAttr == newLink._endAttr && link._endAttr == newLink._startAttr))
         {
-            if (link._endAttr == newLink._endAttr)
-            {
-                return true;
-            }
-        }
-        else if (link._startAttr == newLink._endAttr)
-        {
-            if (link._endAttr == newLink._startAttr)
-            {
-                return true;
-            }
+            return true;
         }
     }
     return false;
