@@ -4156,7 +4156,7 @@ void Graph::drawGraph(ImVec2 mousePos)
     float statusHeight = ImGui::GetFontSize() * _statusHeight;
     ImGui::BeginChild("MainContent", ImVec2(0, availHeight - statusHeight), false, ImGuiWindowFlags_NoScrollbar);
     drawLeftPaneAndSplitter(mousePos);
-    
+
     if (_cursorInRenderView)
     {
         handleRenderViewInputs();
@@ -4230,8 +4230,8 @@ void Graph::drawGraph(ImVec2 mousePos)
                     if (pos >= 0)
                     {
                         _copiedNodes.emplace(_state.nodes[pos], nullptr);
+                    }
                 }
-            }
             }
             else if (ed::AcceptCut())
             {
@@ -4246,7 +4246,7 @@ void Graph::drawGraph(ImVec2 mousePos)
                         if (pos >= 0)
                         {
                             _copiedNodes.emplace(_state.nodes[pos], nullptr);
-                    }
+                        }
                     }
                     _isCut = true;
                 }
@@ -4360,7 +4360,7 @@ void Graph::drawGraph(ImVec2 mousePos)
         // or if the shortcut for cut is used
         if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow))
         {
-            bool traverseDownstream = ImGui::IsKeyReleased(ImGuiKey_RightArrow); 
+            bool traverseDownstream = ImGui::IsKeyReleased(ImGuiKey_RightArrow);
             bool traverseUpstream = ImGui::IsKeyReleased(ImGuiKey_LeftArrow);
 
             // Traverse connections with arrow keys
@@ -4373,13 +4373,13 @@ void Graph::drawGraph(ImVec2 mousePos)
                     {
                         if (int(id.Get()) > 0)
                         {
-                        int pos = findNode(int(id.Get()));
+                            int pos = findNode(int(id.Get()));
                             if (pos >= 0)
                             {
                                 selectedNode = _state.nodes[pos];
                                 break;
-                    }
-                }
+                            }
+                        }
                     }
                 }
                 if (selectedNode && _currUiNode)
@@ -4396,9 +4396,8 @@ void Graph::drawGraph(ImVec2 mousePos)
                         ed::SelectNode(connectedNode->getId());
                         ed::NavigateToSelection();
                     }
-
                 }
-            }            
+            }
 
             else if (ImGui::IsKeyReleased(ImGuiKey_Delete) || ImGui::IsKeyReleased(ImGuiKey_Backspace) || _isCut)
             {
@@ -4411,15 +4410,15 @@ void Graph::drawGraph(ImVec2 mousePos)
 
                         if (int(id.Get()) > 0)
                         {
-                        int pos = findNode(int(id.Get()));
-                        if (pos >= 0 && !readOnly())
-                        {
-                            deleteNode(_state.nodes[pos]);
-                            _delete = true;
-                            ed::DeselectNode(id);
-                            ed::DeleteNode(id);
-                            _currUiNode = nullptr;
-                        }
+                            int pos = findNode(int(id.Get()));
+                            if (pos >= 0 && !readOnly())
+                            {
+                                deleteNode(_state.nodes[pos]);
+                                _delete = true;
+                                ed::DeselectNode(id);
+                                ed::DeleteNode(id);
+                                _currUiNode = nullptr;
+                            }
                             else if (readOnly())
                             {
                                 _popup = true;
@@ -4462,7 +4461,7 @@ void Graph::drawGraph(ImVec2 mousePos)
             else if (ImGui::IsKeyReleased(ImGuiKey_U) && (!ImGui::IsPopupOpen("add node")) && (!ImGui::IsPopupOpen("search")) && !_fileDialogSave.isOpened())
             {
                 upNodeGraph();
-        }
+            }
         }
 
         // Add new link
@@ -4484,7 +4483,7 @@ void Graph::drawGraph(ImVec2 mousePos)
                     {
                         ed::RejectNewItem();
                     }
-                    }
+                }
                 else
                 {
                     _popup = true;
@@ -4593,32 +4592,32 @@ void Graph::drawGraph(ImVec2 mousePos)
         }
     }
 
-        shaderPopup();
-        if (ImGui::GetFrameCount() == (_frameCount + 2))
+    shaderPopup();
+    if (ImGui::GetFrameCount() == (_frameCount + 2))
+    {
+        updateMaterials();
+        _renderer->setMaterialCompilation(false);
+    }
+
+    ed::Suspend();
+    _fileDialogSave.display();
+
+    // Save file
+    if (_fileDialogSave.hasSelected())
+    {
+        std::string message;
+        if (!_graphDoc->validate(&message))
         {
-            updateMaterials();
-            _renderer->setMaterialCompilation(false);
+            logStatus("Validation warnings for " + _materialFilename.getBaseName() + " ***");
+            logStatus(message);
         }
+        _materialFilename = _fileDialogSave.getSelected();
+        ed::Resume();
+        savePosition();
 
-        ed::Suspend();
-        _fileDialogSave.display();
-
-        // Save file
-        if (_fileDialogSave.hasSelected())
-        {
-            std::string message;
-            if (!_graphDoc->validate(&message))
-            {
-                logStatus("Validation warnings for " + _materialFilename.getBaseName() + " ***");
-                logStatus(message);
-            }
-            _materialFilename = _fileDialogSave.getSelected();
-            ed::Resume();
-            savePosition();
-
-            saveDocument(_materialFilename);
-            _fileDialogSave.clearSelected();
-        }
+        saveDocument(_materialFilename);
+        _fileDialogSave.clearSelected();
+    }
     else
     {
         ed::Resume();
