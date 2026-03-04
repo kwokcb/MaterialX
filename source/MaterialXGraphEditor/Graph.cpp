@@ -150,7 +150,7 @@ Graph::Graph(const std::string& materialFilename,
     _previewSize(previewWidth),
     _statusLinesMax(200),
     _statusScrollToBottom(0),
-    _statusHeight(4.0f),
+    _statusHeight(3.0f),
     _saveNodePositions(true)
 {
     loadStandardLibraries();
