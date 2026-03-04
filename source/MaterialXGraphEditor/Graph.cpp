@@ -14,8 +14,6 @@
 
 #include <cctype>
 #include <iostream>
-#include <deque>
-#include <mutex>
 
 namespace
 {

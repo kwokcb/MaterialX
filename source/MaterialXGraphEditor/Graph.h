@@ -12,6 +12,8 @@
 #include <MaterialXGraphEditor/UiNode.h>
 
 #include <imgui_node_editor.h>
+#include <deque>
+#include <mutex>
 
 namespace ed = ax::NodeEditor;
 namespace mx = MaterialX;
