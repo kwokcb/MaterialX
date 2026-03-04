@@ -14,6 +14,8 @@
 
 #include <cctype>
 #include <iostream>
+#include <deque>
+#include <mutex>
 
 namespace
 {
@@ -134,6 +136,7 @@ Graph::Graph(const std::string& materialFilename,
     _layoutPending(false),
     _needsNavigation(false),
     _delete(false),
+    _cursorInRenderView(false),
     _fileDialogSave(FileDialog::EnterNewFilename),
     _popup(false),
     _shaderPopup(false),
@@ -145,6 +148,9 @@ Graph::Graph(const std::string& materialFilename,
     _frameCount(INT_MIN),
     _fontScale(1.0f),
     _previewSize(previewWidth),
+    _statusLinesMax(200),
+    _statusScrollToBottom(0),
+    _statusHeight(4.0f),
     _saveNodePositions(true)
 {
     loadStandardLibraries();
@@ -174,7 +180,56 @@ Graph::Graph(const std::string& materialFilename,
     for (const std::string& incl : _renderer->getXincludeFiles())
     {
         _xincludeFiles.insert(incl);
+    }    
+}
+
+// Append a message to the status log.
+// Still log to console.
+void Graph::logStatus(const std::string& message)
+{
+    std::cout << "> " << message << std::endl;
+
+    std::lock_guard<std::mutex> lock(_statusMutex);
+    if (_statusLog.size() >= _statusLinesMax)
+        _statusLog.pop_front();
+    _statusLog.push_back(message);
+    _statusScrollToBottom = 2;
+}
+
+void Graph::clearStatusLog()
+{
+    std::lock_guard<std::mutex> lock(_statusMutex);
+    _statusLog.clear();
+    _statusScrollToBottom = 2;
+}
+
+// Draw the status line at the bottom of the editor
+void Graph::drawStatusLine()
+{
+    float statusHeight = ImGui::GetFontSize() * _statusHeight;
+    ImGui::SetCursorPosY(ImGui::GetWindowContentRegionMax().y - statusHeight);
+    ImGui::Separator();
+    ImGui::BeginChild("##StatusLine", ImVec2(0, statusHeight), false, ImGuiWindowFlags_HorizontalScrollbar);
+    if (ImGui::Button("Clear"))
+        clearStatusLog();
+    ImGui::SameLine();
+    //ImGui::TextUnformatted("Status:");
+    //ImGui::SameLine();
+    ImGui::BeginChild("##StatusText", ImVec2(0, statusHeight - ImGui::GetFontSize()), false, ImGuiWindowFlags_HorizontalScrollbar);
+    {
+        std::lock_guard<std::mutex> lock(_statusMutex);
+        for (const auto& msg : _statusLog)
+        {
+            ImGui::TextUnformatted(msg.c_str());
+        }
+        if (_statusScrollToBottom > 0)
+        {
+            ImGui::SetScrollHereY(1.0f);
+            _statusScrollToBottom--;
+        }
+        ImGui::EndChild();
     }
+    ImGui::EndChild();
 }
 
 mx::ElementPredicate Graph::getElementPredicate() const
@@ -198,12 +253,12 @@ void Graph::loadStandardLibraries()
         _xincludeFiles = mx::loadLibraries(_libraryFolders, _searchPath, _stdLib);
         if (_xincludeFiles.empty())
         {
-            std::cerr << "Could not find standard data libraries on the given search path: " << _searchPath.asString() << std::endl;
+            logStatus("Could not find standard data libraries on the given search path: " + _searchPath.asString());
         }
     }
     catch (std::exception& e)
     {
-        std::cerr << "Failed to load standard data libraries: " << e.what() << std::endl;
+        logStatus(std::string("Failed to load standard data libraries: ") + e.what());
         return;
     }
 }
@@ -213,7 +268,9 @@ mx::DocumentPtr Graph::loadDocument(const mx::FilePath& filename)
     mx::FilePathVec libraryFolders = { "libraries" };
     _libraryFolders = libraryFolders;
     mx::XmlReadOptions readOptions;
-    readOptions.readXIncludeFunction = [](mx::DocumentPtr doc, const mx::FilePath& filename,
+    // Collect error messages from the lambda
+    std::vector<std::string> xincludeErrors;
+    readOptions.readXIncludeFunction = [&xincludeErrors](mx::DocumentPtr doc, const mx::FilePath& filename,
                                           const mx::FileSearchPath& searchPath, const mx::XmlReadOptions* options)
     {
         mx::FilePath resolvedFilename = searchPath.find(filename);
@@ -225,13 +282,12 @@ mx::DocumentPtr Graph::loadDocument(const mx::FilePath& filename)
             }
             catch (mx::Exception& e)
             {
-                std::cerr << "Failed to read include file: " << filename.asString() << ". " <<
-                    std::string(e.what()) << std::endl;
+                xincludeErrors.push_back("Failed to read include file: " + filename.asString() + ". " + std::string(e.what()));
             }
         }
         else
         {
-            std::cerr << "Include file not found: " << filename.asString() << std::endl;
+            xincludeErrors.push_back("Include file not found: " + filename.asString());
         }
     };
 
@@ -241,12 +297,19 @@ mx::DocumentPtr Graph::loadDocument(const mx::FilePath& filename)
         if (!filename.isEmpty())
         {
             mx::readFromXmlFile(doc, filename, _searchPath, &readOptions);
+            logStatus("Loaded file:" + filename.asString());
+
             doc->setDataLibrary(_stdLib);
+
+            // Log any xinclude errors
+            for (const auto& err : xincludeErrors)
+                logStatus(err);
+
             std::string message;
             if (!doc->validate(&message))
             {
-                std::cerr << "*** Validation warnings for " << filename.asString() << " ***" << std::endl;
-                std::cerr << message << std::endl;
+                logStatus("Validation warnings for " + filename.asString() + " ***");
+                logStatus(message);
             }
 
             // Cache the currently loaded file
@@ -255,8 +318,7 @@ mx::DocumentPtr Graph::loadDocument(const mx::FilePath& filename)
     }
     catch (mx::Exception& e)
     {
-        std::cerr << "Failed to read file: " << filename.asString() << ": \"" <<
-            std::string(e.what()) << "\"" << std::endl;
+        logStatus("Failed to read file: " + filename.asString() + ": \"" + std::string(e.what()) + "\"");
     }
     _parentStates.clear();
     return doc;
@@ -944,7 +1006,7 @@ void Graph::showPropertyEditorValue(UiNodePtr node, mx::InputPtr input, const mx
                         }
                         else
                         {
-                            std::cout << "Image file not loaded: " << temp << std::endl;
+                            logStatus("Image file not loaded: " + temp);
                         }
                         if (textureId)
                         {
@@ -2950,11 +3012,8 @@ void Graph::loadGeometry()
     _fileDialogGeom.open();
 }
 
-void Graph::graphButtons()
+void Graph::drawMenuBar()
 {
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(.15f, .15f, .15f, 1.0f));
-    ImGui::SetWindowFontScale(_fontScale);
-
     if (ImGui::BeginMenuBar())
     {
         if (ImGui::BeginMenu("File"))
@@ -3055,8 +3114,10 @@ void Graph::graphButtons()
             saveGraphToFile();
         }
     }
+}
 
-    // Split window into panes for NodeEditor
+void Graph::drawLeftPaneAndSplitter(ImVec2 mousePos)
+{
     static float leftPaneWidth = 375.0f;
     static float rightPaneWidth = 750.0f;
     splitter(true, 4.0f, &leftPaneWidth, &rightPaneWidth, 20.0f, 20.0f);
@@ -3083,9 +3144,7 @@ void Graph::graphButtons()
         ImGui::Text("%s", _state.name.c_str());
         ImGui::SameLine();
     }
-    ImVec2 windowPos2 = ImGui::GetWindowPos();
     ImGui::Unindent(leftPaneWidth + 15.f);
-    ImGui::PopStyleColor();
     ImGui::NewLine();
 
     // Create two windows using splitter
@@ -3094,7 +3153,6 @@ void Graph::graphButtons()
     float aspectRatio = _renderer->getPixelRatio();
     ImVec2 screenSize = ImVec2(paneWidth, paneWidth / aspectRatio);
 
-    ImVec2 mousePos = ImGui::GetMousePos();
     ImVec2 tempWindowPos = ImGui::GetCursorPos();
     bool cursorInRenderView = mousePos.x > tempWindowPos.x && mousePos.x < (tempWindowPos.x + screenSize.x) &&
                               mousePos.y > tempWindowPos.y && mousePos.y < (tempWindowPos.y + screenSize.y);
@@ -3117,16 +3175,15 @@ void Graph::graphButtons()
     bool hasScrollbar = context->CurrentWindow->ScrollbarY;
     cursorInRenderView &= hasScrollbar ? mousePos.x < (tempWindowPos.x + screenSize.x - ImGui::GetStyle().ScrollbarSize) : true;
     cursorInRenderView &= hasScrollbar ? mousePos.y < (tempWindowPos.y + screenSize.y - ImGui::GetScrollY()) : true;
+    _cursorInRenderView = cursorInRenderView;
 
-    // RenderView window
-    ImVec2 wsize = ImVec2((float) _renderer->getViewWidth(), (float) _renderer->getViewHeight());
-    _renderer->setViewWidth((int) screenSize[0]);
-    _renderer->setViewHeight((int) screenSize[1]);
-
+    // Render view
+    _renderer->setViewWidth((int)screenSize[0]);
+    _renderer->setViewHeight((int)screenSize[1]);
     if (_renderer)
     {
         // Enable sRGB conversion for framebuffer ONLY when drawing material preview
-        ImGui::GetWindowDrawList()->AddCallback(EnableSRGBCallback,  nullptr);
+        ImGui::GetWindowDrawList()->AddCallback(EnableSRGBCallback, nullptr);
 
         _renderer->getViewCamera()->setViewportSize(mx::Vector2(screenSize[0], screenSize[1]));
         GLuint64 my_image_texture = _renderer->_textureID;
@@ -3135,20 +3192,15 @@ void Graph::graphButtons()
         ImGui::Image((ImTextureID) my_image_texture, screenSize, ImVec2(0, 1), ImVec2(1, 0));
 
         // Disable sRGB conversion for all other imgui ui components.
-        ImGui::GetWindowDrawList()->AddCallback(DisableSRGBCallback,  nullptr);
+        ImGui::GetWindowDrawList()->AddCallback(DisableSRGBCallback, nullptr);
     }
 
     ImGui::Separator();
 
-    // Property editor for current nodes
+    // Property editor for current nodes   
     propertyEditor();
-    ImGui::EndChild();
+    ImGui::EndChild(); 
     ImGui::SameLine(0.0f, 12.0f);
-
-    if (cursorInRenderView)
-    {
-        handleRenderViewInputs();
-    }
 }
 
 void Graph::showPropertyEditorOutputConnections(UiNodePtr node)
@@ -4095,7 +4147,22 @@ void Graph::drawGraph(ImVec2 mousePos)
 
     io2.ConfigFlags = ImGuiConfigFlags_IsSRGB | ImGuiConfigFlags_NavEnableKeyboard;
     io2.MouseDoubleClickTime = .5;
-    graphButtons();
+
+    // Style for buttons (used in property editor)
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(.15f, .15f, .15f, 1.0f));
+    ImGui::SetWindowFontScale(_fontScale);
+
+    drawMenuBar();
+
+    float availHeight = ImGui::GetContentRegionAvail().y;
+    float statusHeight = ImGui::GetFontSize() * _statusHeight;
+    ImGui::BeginChild("MainContent", ImVec2(0, availHeight - statusHeight), false, ImGuiWindowFlags_NoScrollbar);
+    drawLeftPaneAndSplitter(mousePos);
+    
+    if (_cursorInRenderView)
+    {
+        handleRenderViewInputs();
+    }
 
     ed::Begin("My Editor");
     {
@@ -4165,8 +4232,8 @@ void Graph::drawGraph(ImVec2 mousePos)
                     if (pos >= 0)
                     {
                         _copiedNodes.emplace(_state.nodes[pos], nullptr);
-                    }
                 }
+            }
             }
             else if (ed::AcceptCut())
             {
@@ -4181,7 +4248,7 @@ void Graph::drawGraph(ImVec2 mousePos)
                         if (pos >= 0)
                         {
                             _copiedNodes.emplace(_state.nodes[pos], nullptr);
-                        }
+                    }
                     }
                     _isCut = true;
                 }
@@ -4308,13 +4375,13 @@ void Graph::drawGraph(ImVec2 mousePos)
                     {
                         if (int(id.Get()) > 0)
                         {
-                            int pos = findNode(int(id.Get()));
+                        int pos = findNode(int(id.Get()));
                             if (pos >= 0)
                             {
                                 selectedNode = _state.nodes[pos];
                                 break;
-                            }
-                        }
+                    }
+                }
                     }
                 }
                 if (selectedNode && _currUiNode)
@@ -4346,15 +4413,15 @@ void Graph::drawGraph(ImVec2 mousePos)
 
                         if (int(id.Get()) > 0)
                         {
-                            int pos = findNode(int(id.Get()));
-                            if (pos >= 0 && !readOnly())
-                            {
-                                deleteNode(_state.nodes[pos]);
-                                _delete = true;
-                                ed::DeselectNode(id);
-                                ed::DeleteNode(id);
-                                _currUiNode = nullptr;
-                            }
+                        int pos = findNode(int(id.Get()));
+                        if (pos >= 0 && !readOnly())
+                        {
+                            deleteNode(_state.nodes[pos]);
+                            _delete = true;
+                            ed::DeselectNode(id);
+                            ed::DeleteNode(id);
+                            _currUiNode = nullptr;
+                        }
                             else if (readOnly())
                             {
                                 _popup = true;
@@ -4397,7 +4464,7 @@ void Graph::drawGraph(ImVec2 mousePos)
             else if (ImGui::IsKeyReleased(ImGuiKey_U) && (!ImGui::IsPopupOpen("add node")) && (!ImGui::IsPopupOpen("search")) && !_fileDialogSave.isOpened())
             {
                 upNodeGraph();
-            }
+        }
         }
 
         // Add new link
@@ -4419,7 +4486,7 @@ void Graph::drawGraph(ImVec2 mousePos)
                     {
                         ed::RejectNewItem();
                     }
-                }
+                    }
                 else
                 {
                     _popup = true;
@@ -4528,38 +4595,45 @@ void Graph::drawGraph(ImVec2 mousePos)
         }
     }
 
-    shaderPopup();
-    if (ImGui::GetFrameCount() == (_frameCount + 2))
-    {
-        updateMaterials();
-        _renderer->setMaterialCompilation(false);
-    }
-
-    ed::Suspend();
-    _fileDialogSave.display();
-
-    // Save file
-    if (_fileDialogSave.hasSelected())
-    {
-        std::string message;
-        if (!_graphDoc->validate(&message))
+        shaderPopup();
+        if (ImGui::GetFrameCount() == (_frameCount + 2))
         {
-            std::cerr << "*** Validation warnings for " << _materialFilename.getBaseName() << " ***" << std::endl;
-            std::cerr << message;
+            updateMaterials();
+            _renderer->setMaterialCompilation(false);
         }
-        _materialFilename = _fileDialogSave.getSelected();
-        ed::Resume();
-        savePosition();
 
-        saveDocument(_materialFilename);
-        _fileDialogSave.clearSelected();
-    }
+        ed::Suspend();
+        _fileDialogSave.display();
+
+        // Save file
+        if (_fileDialogSave.hasSelected())
+        {
+            std::string message;
+            if (!_graphDoc->validate(&message))
+            {
+                logStatus("Validation warnings for " + _materialFilename.getBaseName() + " ***");
+                logStatus(message);
+            }
+            _materialFilename = _fileDialogSave.getSelected();
+            ed::Resume();
+            savePosition();
+
+            saveDocument(_materialFilename);
+            _fileDialogSave.clearSelected();
+        }
     else
     {
         ed::Resume();
     }
 
     ed::End();
+
+    ImGui::EndChild(); // "MainContent"
+
+    ImGui::PopStyleColor(); // pop button color
+
+    // Status line
+    drawStatusLine();
     ImGui::End();
 
     _fileDialog.display();
@@ -4693,4 +4767,7 @@ void Graph::saveDocument(mx::FilePath filePath)
     mx::XmlWriteOptions writeOptions;
     writeOptions.elementPredicate = getElementPredicate();
     mx::writeToXmlFile(writeDoc, filePath, &writeOptions);
+
+    logStatus("Saved file: " + filePath.asString());
 }
+
