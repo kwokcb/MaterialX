@@ -98,6 +98,8 @@ class Graph
 
     mx::DocumentPtr loadDocument(const mx::FilePath& filename);
     void drawGraph(ImVec2 mousePos);
+    void drawMenuBar();
+    void drawLeftPaneAndSplitter(ImVec2 mousePos);
 
     RenderViewPtr getRenderer()
     {
@@ -109,9 +111,16 @@ class Graph
         _fontScale = val;
     }
 
+    // Status log interface
+    void logStatus(const std::string& message);
+    void clearStatusLog();
+
   private:
     mx::ElementPredicate getElementPredicate() const;
     void loadStandardLibraries();
+
+    // Status line UI
+    void drawStatusLine();
 
     // Generate node UI from nodedefs
     void createNodeUIList(mx::DocumentPtr doc);
@@ -311,6 +320,7 @@ class Graph
     bool _layoutPending;
     bool _needsNavigation;
     bool _delete;
+    bool _cursorInRenderView;
 
     // file dialog information
     FileDialog _fileDialog;
@@ -347,6 +357,13 @@ class Graph
 
     // Preview area size
     float _previewSize;
+
+    // Status line
+    std::deque<std::string> _statusLog;
+    size_t _statusLinesMax = 200;
+    int _statusScrollToBottom = 0;
+    float _statusHeight = 4.0f;
+    std::mutex _statusMutex;
 
     // Options
     bool _saveNodePositions;
