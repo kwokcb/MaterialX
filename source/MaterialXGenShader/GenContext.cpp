@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <MaterialXGenShader/Exception.h>
 #include <MaterialXGenShader/GenContext.h>
-#include <MaterialXGenShader/ShaderGenerator.h>
 
 MATERIALX_NAMESPACE_BEGIN
 
@@ -19,6 +19,9 @@ GenContext::GenContext(ShaderGeneratorPtr sg) :
     {
         throw ExceptionShaderGenError("GenContext must have a valid shader generator");
     }
+
+    // Apply the generator's default options for its target.
+    _sg->applyDefaultOptions(_options);
 
     // Collect and cache reserved words from the shader generator
     StringSet reservedWords;
@@ -53,7 +56,7 @@ ShaderNodeImplPtr GenContext::findNodeImplementation(const string& name) const
 
 void GenContext::getNodeImplementationNames(StringSet& names)
 {
-    for (auto it : _nodeImpls)
+    for (const auto& it : _nodeImpls)
     {
         names.insert(it.first);
     }

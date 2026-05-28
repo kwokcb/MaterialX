@@ -16,6 +16,9 @@
 #include <MaterialXRender/TinyObjLoader.h>
 
 #include <MaterialXGenShader/DefaultColorManagementSystem.h>
+#ifdef MATERIALX_BUILD_OCIO
+#include <MaterialXGenShader/OcioColorManagementSystem.h>
+#endif
 
 #include <MaterialXFormat/Util.h>
 
@@ -160,7 +163,7 @@ RenderView::RenderView(mx::DocumentPtr doc,
     _genContext.getOptions().fileTextureVerticalFlip = true;
     _genContext.getOptions().hwShadowMap = true;
     // Make sure all uniforms are added so value updates can
-    // find the the corresponding uniform.
+    // find the corresponding uniform.
     _genContext.getOptions().shaderInterfaceType = mx::SHADER_INTERFACE_COMPLETE;
 
     setDocument(doc);
@@ -604,7 +607,7 @@ void RenderView::initContext(mx::GenContext& context)
     // Create the list of supported distance units.
     auto unitScales = _distanceUnitConverter->getUnitScale();
     _distanceUnitOptions.resize(unitScales.size());
-    for (auto unitScale : unitScales)
+    for (const auto& unitScale : unitScales)
     {
         int location = _distanceUnitConverter->getUnitAsInteger(unitScale.first);
         _distanceUnitOptions[location] = unitScale.first;

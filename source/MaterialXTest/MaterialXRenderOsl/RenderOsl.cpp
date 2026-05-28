@@ -14,6 +14,7 @@
 #endif
 
 #include <MaterialXGenOsl/OslShaderGenerator.h>
+#include <MaterialXGenOsl/OslNetworkShaderGenerator.h>
 
 #include <MaterialXFormat/Util.h>
 
@@ -76,36 +77,41 @@ class BitangentOsl : public mx::ShaderNodeImpl
 class OslShaderRenderTester : public RenderUtil::ShaderRenderTester
 {
   public:
-    explicit OslShaderRenderTester(mx::ShaderGeneratorPtr shaderGenerator) :
+    explicit OslShaderRenderTester(mx::ShaderGeneratorPtr shaderGenerator, bool useOslCmdStr) :
         RenderUtil::ShaderRenderTester(shaderGenerator)
     {
-        // Preprocess to resolve to absolute image file names 
+        // Preprocess to resolve to absolute image file names
         // and all non-POSIX separators must be converted to POSIX ones (this only affects running on Windows)
         _resolveImageFilenames = true;
         _customFilenameResolver = mx::StringResolver::create();
         _customFilenameResolver->setFilenameSubstitution("\\\\", "/");
         _customFilenameResolver->setFilenameSubstitution("\\", "/");
-
+        _useOslCmdStr = useOslCmdStr;
     }
 
   protected:
     void createRenderer(std::ostream& log) override;
 
-    bool runRenderer(const std::string& shaderName,
-                     mx::TypedElementPtr element,
-                     mx::GenContext& context,
-                     mx::DocumentPtr doc,
-                     std::ostream& log,
-                     const GenShaderUtil::TestSuiteOptions& testOptions,
-                     RenderUtil::RenderProfileTimes& profileTimes,
-                     const mx::FileSearchPath& imageSearchPath,
-                     const std::string& outputPath = ".",
-                     mx::ImageVec* imageVec = nullptr) override;
+    RenderUtil::RenderProfileResult runRenderer(
+        const RenderUtil::RenderSession& session,
+        const RenderUtil::RenderItem& item,
+        mx::GenContext& context) override;
 
     void addSkipFiles() override
     {
-        _skipFiles.insert("standard_surface_onyx_hextiled.mtlx");
-        _skipFiles.insert("hextiled.mtlx");
+        if (_useOslCmdStr)
+        {
+            _skipFiles.insert("filename_cm_test.mtlx");
+            _skipFiles.insert("shader_ops.mtlx");
+            _skipFiles.insert("chiang_hair_surfaceshader.mtlx");
+            _skipFiles.insert("network_surfaceshader.mtlx");
+            _skipFiles.insert("sheen.mtlx");
+            _skipFiles.insert("toon_shade.mtlx");
+            _skipFiles.insert("bsdf_graph.mtlx");
+            _skipFiles.insert("varying_ior.mtlx");
+            _skipFiles.insert("vertical_layering.mtlx");
+            _skipFiles.insert("mix_bsdf.mtlx");
+        }
     }
 
     bool saveImage(const mx::FilePath& filePath, mx::ConstImagePtr image, bool /*verticalFlip*/) const override
@@ -115,6 +121,7 @@ class OslShaderRenderTester : public RenderUtil::ShaderRenderTester
 
     mx::ImageLoaderPtr _imageLoader;
     mx::OslRendererPtr _renderer;
+    bool _useOslCmdStr;
 };
 
 // Renderer setup
@@ -181,20 +188,21 @@ void OslShaderRenderTester::createRenderer(std::ostream& log)
 }
 
 // Renderer execution
-bool OslShaderRenderTester::runRenderer(const std::string& shaderName,
-                                         mx::TypedElementPtr element,
-                                         mx::GenContext& context,
-                                         mx::DocumentPtr doc,
-                                         std::ostream& log,
-                                         const GenShaderUtil::TestSuiteOptions& testOptions,
-                                         RenderUtil::RenderProfileTimes& profileTimes,
-                                         const mx::FileSearchPath&,
-                                         const std::string& outputPath,
-                                         mx::ImageVec* imageVec)
+RenderUtil::RenderProfileResult OslShaderRenderTester::runRenderer(
+    const RenderUtil::RenderSession& session,
+    const RenderUtil::RenderItem& item,
+    mx::GenContext& context)
 {
+    RenderUtil::RenderProfileResult result;
+    const std::string& shaderName = item.shaderName;
+    mx::DocumentPtr doc = item.document;
+    mx::TypedElementPtr element = item.element;
+    const GenShaderUtil::TestSuiteOptions& testOptions = session.testOptions;
+    std::ostream& log = session.log;
+
     std::cout << "Validating OSL rendering for: " << doc->getSourceUri() << std::endl;
 
-    mx::ScopedTimer totalOSLTime(&profileTimes.languageTimes.totalTime);
+    mx::ScopedTimer totalOSLTime(&result.languageTimes.totalTime);
 
     mx::ShaderGenerator& shadergen = context.getShaderGenerator();
 
@@ -207,15 +215,16 @@ bool OslShaderRenderTester::runRenderer(const std::string& shaderName,
 
         for (const auto& options : optionsList)
         {
-            profileTimes.elementsTested++;
+            result.elementsTested++;
 
             mx::ShaderPtr shader;
             try
             {
-                mx::ScopedTimer genTimer(&profileTimes.languageTimes.generationTime);
+                mx::ScopedTimer genTimer(&result.languageTimes.generationTime);
                 mx::GenOptions& contextOptions = context.getOptions();
                 contextOptions = options;
                 contextOptions.targetColorSpaceOverride = "lin_rec709";
+                contextOptions.oslConnectCiWrapper = true;
 
                 // Apply local overrides for shader generation.
                 shadergen.registerImplementation("IM_tangent_vector3_" + mx::OslShaderGenerator::TARGET, TangentOsl::create);
@@ -232,22 +241,27 @@ bool OslShaderRenderTester::runRenderer(const std::string& shaderName,
             if (shader == nullptr)
             {
                 log << ">> Failed to generate shader\n";
-                return false;
+                result.success = false;
+                return result;
             }
             CHECK(shader->getSourceCode().length() > 0);
 
-            std::string shaderPath;
-            mx::FilePath outputFilePath = outputPath;
-            // Use separate directory for reduced output
-            if (options.shaderInterfaceType == mx::SHADER_INTERFACE_REDUCED)
-            {
-                outputFilePath = outputFilePath / mx::FilePath("reduced");
-            }
+            std::string oslCmdStr = shader->getSourceCode();
 
+            std::string shaderPath;
+            mx::FilePath outputFilePath = item.outputPath;
+            
             // Note: mkdir will fail if the directory already exists which is ok.
             {
-                mx::ScopedTimer ioDir(&profileTimes.languageTimes.ioTime);
-                outputFilePath.createDirectory();
+                mx::ScopedTimer ioDir(&result.languageTimes.ioTime);
+                outputFilePath.createDirectory(true);
+                
+                // Use separate directory for reduced output
+                if (options.shaderInterfaceType == mx::SHADER_INTERFACE_REDUCED)
+                {
+                    outputFilePath = outputFilePath / mx::FilePath("reduced");
+                    outputFilePath.createDirectory();
+                }
             }
 
             shaderPath = mx::FilePath(outputFilePath) / mx::FilePath(shaderName);
@@ -255,9 +269,9 @@ bool OslShaderRenderTester::runRenderer(const std::string& shaderName,
             // Write out osl file
             if (testOptions.dumpGeneratedCode)
             {
-                mx::ScopedTimer ioTimer(&profileTimes.languageTimes.ioTime);
+                mx::ScopedTimer ioTimer(&result.languageTimes.ioTime);
                 std::ofstream file;
-                file.open(shaderPath + ".osl");
+                file.open(shaderPath + (_useOslCmdStr ? ".oslcmd" : ".osl"));
                 file << shader->getSourceCode();
                 file.close();
             }
@@ -269,12 +283,15 @@ bool OslShaderRenderTester::runRenderer(const std::string& shaderName,
                 // Set renderer properties.
                 _renderer->setOslOutputFilePath(outputFilePath);
                 _renderer->setOslShaderName(shaderName);
-                _renderer->setRaysPerPixelLit(testOptions.enableReferenceQuality ? 32 : 4);
-                _renderer->setRaysPerPixelUnlit(testOptions.enableReferenceQuality ? 8 : 1);
+                // The antialiasing flag in testrender traces N*N samples per pixel,
+                // so these values are effectively squared.
+                _renderer->setAaLit(testOptions.enableReferenceQuality ? 16 : 2);
+                _renderer->setAaUnlit(testOptions.enableReferenceQuality ? 2 : 1);
 
                 // Validate compilation
+                if (!_useOslCmdStr)
                 {
-                    mx::ScopedTimer compileTimer(&profileTimes.languageTimes.compileTime);
+                    mx::ScopedTimer compileTimer(&result.languageTimes.compileTime);
                     _renderer->createProgram(shader);
                 }
 
@@ -286,7 +303,7 @@ bool OslShaderRenderTester::runRenderer(const std::string& shaderName,
                 mx::StringVec envOverrides;
                 std::string envmap_filename("string envmap_filename \"");
                 envmap_filename += testOptions.radianceIBLPath;
-                envmap_filename += "\";\n";                    
+                envmap_filename += "\";\n";
                 envOverrides.push_back(envmap_filename);
 
                 _renderer->setEnvShaderParameterOverrides(envOverrides);
@@ -299,10 +316,20 @@ bool OslShaderRenderTester::runRenderer(const std::string& shaderName,
 
                     const std::string& outputName = output->getVariable();
                     const std::string& outputType = typeSyntax.getTypeAlias().empty() ? typeSyntax.getName() : typeSyntax.getTypeAlias();
-                    const std::string& sceneTemplateFile = "scene_template.xml";
+                    const std::string& sceneTemplateFile = (_useOslCmdStr ? "scene_template_oslcmd.xml" : "scene_template.xml");
 
                     // Set shader output name and type to use
                     _renderer->setOslShaderOutput(outputName, outputType);
+
+                    // Get oslcmdstr
+                    _renderer->setOSLCmdStr(oslCmdStr);
+                    _renderer->useOslCommandString(_useOslCmdStr);
+                    // Osl Network Shaders record the oso path in an attribute
+                    auto osoPathAttr = shader->getAttribute("osoPath");
+                    if (osoPathAttr)
+                    {
+                        _renderer->setDataLibraryOSOPath(osoPathAttr->getValueString());
+                    }
 
                     // Set scene template file. For now we only have the constant color scene file
                     mx::FileSearchPath searchPath = mx::getDefaultDataSearchPath();
@@ -312,12 +339,9 @@ bool OslShaderRenderTester::runRenderer(const std::string& shaderName,
 
                     // Validate rendering
                     {
-                        mx::ScopedTimer renderTimer(&profileTimes.languageTimes.renderTime);
+                        mx::ScopedTimer renderTimer(&result.languageTimes.renderTime);
                         _renderer->render();
-                        if (imageVec)
-                        {
-                            imageVec->push_back(_renderer->captureImage());
-                        }
+                        result.images.push_back(_renderer->captureImage());
                     }
                 }
                 else
@@ -347,10 +371,12 @@ bool OslShaderRenderTester::runRenderer(const std::string& shaderName,
                 log << e.what();
             }
             CHECK(validated);
+            if (!validated)
+                result.success = false;
         }
     }
 
-    return true;
+    return result;
 }
 
 TEST_CASE("Render: OSL TestSuite", "[renderosl]")
@@ -365,6 +391,24 @@ TEST_CASE("Render: OSL TestSuite", "[renderosl]")
     mx::FileSearchPath searchPath = mx::getDefaultDataSearchPath();
     mx::FilePath optionsFilePath = searchPath.find("resources/Materials/TestSuite/_options.mtlx");
 
-    OslShaderRenderTester renderTester(mx::OslShaderGenerator::create());
+    OslShaderRenderTester renderTester(mx::OslShaderGenerator::create(), false);
     renderTester.validate(optionsFilePath);
 }
+
+#ifdef MATERIALX_BUILD_OSOS
+TEST_CASE("Render: OSL Network TestSuite", "[renderoslnetwork]")
+{
+    if (std::string(MATERIALX_OSL_BINARY_OSLC).empty() &&
+        std::string(MATERIALX_OSL_BINARY_TESTRENDER).empty())
+    {
+        INFO("Skipping the OSL test suite as its executable locations haven't been set.");
+        return;
+    }
+
+    mx::FileSearchPath searchPath = mx::getDefaultDataSearchPath();
+    mx::FilePath optionsFilePath = searchPath.find("resources/Materials/TestSuite/_options.mtlx");
+
+    OslShaderRenderTester renderTester(mx::OslNetworkShaderGenerator::create(), true);
+    renderTester.validate(optionsFilePath);
+}
+#endif

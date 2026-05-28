@@ -10,8 +10,8 @@
 #include <MaterialXRender/LightHandler.h>
 #include <MaterialXRender/ShaderRenderer.h>
 
-#include <MaterialXGenShader/HwShaderGenerator.h>
 #include <MaterialXGenMsl/MslShaderGenerator.h>
+#include <MaterialXGenHw/HwConstants.h>
 #include <MaterialXGenShader/Util.h>
 
 #include <iostream>
@@ -325,7 +325,7 @@ bool MslProgram::bind(id<MTLRenderCommandEncoder> renderCmdEncoder)
 
 void MslProgram::prepareUsedResources(id<MTLRenderCommandEncoder> renderCmdEncoder,
                                       CameraPtr cam,
-                                      GeometryHandlerPtr geometryHandler,
+                                      GeometryHandlerPtr /*geometryHandler*/,
                                       ImageHandlerPtr imageHandler,
                                       LightHandlerPtr lightHandler)
 {
@@ -580,7 +580,7 @@ MaterialX::ConstValuePtr MslProgram::findUniformValue(const string& uniformName,
 }
 
 void MslProgram::bindTextures(id<MTLRenderCommandEncoder> renderCmdEncoder,
-                              LightHandlerPtr lightHandler,
+                              LightHandlerPtr /*lightHandler*/,
                               ImageHandlerPtr imageHandler)
 {
     const VariableBlock& publicUniforms = _shader->getStage(Stage::PIXEL).getUniformBlock(HW::PUBLIC_UNIFORMS);
@@ -589,32 +589,6 @@ void MslProgram::bindTextures(id<MTLRenderCommandEncoder> renderCmdEncoder,
         if (arg.type == MTLArgumentTypeTexture)
         {
             bool found = false;
-
-            if (lightHandler)
-            {
-                // Bind environment lights.
-                ImageMap envLights =
-                {
-                    { HW::ENV_RADIANCE, lightHandler->getUsePrefilteredMap() ? lightHandler->getEnvPrefilteredMap() : lightHandler->getEnvRadianceMap() },
-                    { HW::ENV_IRRADIANCE, lightHandler->getEnvIrradianceMap() }
-                };
-                for (const auto& env : envLights)
-                {
-                    std::string str(arg.name.UTF8String);
-                    size_t loc = str.find(env.first);
-                    if (loc != std::string::npos && env.second)
-                    {
-                        ImageSamplingProperties samplingProperties;
-                        samplingProperties.uaddressMode = ImageSamplingProperties::AddressMode::PERIODIC;
-                        samplingProperties.vaddressMode = ImageSamplingProperties::AddressMode::CLAMP;
-                        samplingProperties.filterType = ImageSamplingProperties::FilterType::LINEAR;
-
-                        static_cast<MaterialX::MetalTextureHandler*>(imageHandler.get())->bindImage(env.second, samplingProperties);
-                        bindTexture(renderCmdEncoder, (unsigned int) arg.index, env.second, imageHandler);
-                        found = true;
-                    }
-                }
-            }
 
             if (!found)
             {
@@ -687,8 +661,7 @@ void MslProgram::bindLighting(LightHandlerPtr lightHandler, ImageHandlerPtr imag
 
     // Set the number of active light sources
     size_t lightCount = lightHandler->getLightSources().size();
-    auto input = uniformList.find(HW::NUM_ACTIVE_LIGHT_SOURCES);
-    if (input == uniformList.end())
+    if (!hasUniform(HW::NUM_ACTIVE_LIGHT_SOURCES))
     {
         // No lighting information so nothing further to do
         lightCount = 0;
@@ -706,14 +679,23 @@ void MslProgram::bindLighting(LightHandlerPtr lightHandler, ImageHandlerPtr imag
     bindUniform(HW::ENV_MATRIX, Value::createValue(envRotation), false);
     bindUniform(HW::ENV_RADIANCE_SAMPLES, Value::createValue(lightHandler->getEnvSampleCount()), false);
     bindUniform(HW::ENV_LIGHT_INTENSITY, Value::createValue(lightHandler->getEnvLightIntensity()), false);
-    ImageMap envLights =
+    ImageMap envLights;
+    if (lightHandler->getIndirectLighting())
     {
-        { HW::ENV_RADIANCE, lightHandler->getEnvRadianceMap() },
-        { HW::ENV_IRRADIANCE, lightHandler->getEnvIrradianceMap() }
-    };
-    for (const auto& env : envLights)
+        envLights[HW::ENV_RADIANCE] = lightHandler->getUsePrefilteredMap() ?
+            lightHandler->getEnvPrefilteredMap() :
+            lightHandler->getEnvRadianceMap();
+        envLights[HW::ENV_IRRADIANCE] = lightHandler->getEnvIrradianceMap();
+    }
+    else
     {
-        auto iblUniform = uniformList.find(TEXTURE_NAME(env.first));
+        envLights[HW::ENV_RADIANCE] = imageHandler->getZeroImage();
+        envLights[HW::ENV_IRRADIANCE] = imageHandler->getZeroImage();
+    }
+    for (const auto& env : envLights) {
+        const auto uniformName = TEXTURE_NAME(env.first);
+
+        auto iblUniform = uniformList.find(uniformName);
         MslProgram::InputPtr inputPtr = iblUniform != uniformList.end() ? iblUniform->second : nullptr;
         if (inputPtr)
         {
@@ -737,16 +719,17 @@ void MslProgram::bindLighting(LightHandlerPtr lightHandler, ImageHandlerPtr imag
                 samplingProperties.uaddressMode = ImageSamplingProperties::AddressMode::PERIODIC;
                 samplingProperties.vaddressMode = ImageSamplingProperties::AddressMode::CLAMP;
                 samplingProperties.filterType = ImageSamplingProperties::FilterType::LINEAR;
-                imageHandler->bindImage(image, samplingProperties);
+                bindTexture(imageHandler, uniformName, image, samplingProperties);
             }
         }
     }
+    bindUniform(HW::REFRACTION_TWO_SIDED, Value::createValue(lightHandler->getRefractionTwoSided()), false);
 
     // Bind direct lighting properties.
     if (hasUniform(HW::NUM_ACTIVE_LIGHT_SOURCES))
     {
-        int lightCount = lightHandler->getDirectLighting() ? (int) lightHandler->getLightSources().size() : 0;
-        bindUniform(HW::NUM_ACTIVE_LIGHT_SOURCES, Value::createValue(lightCount));
+        lightCount = lightHandler->getDirectLighting() ? lightCount : 0;
+        bindUniform(HW::NUM_ACTIVE_LIGHT_SOURCES, Value::createValue(static_cast<int>(lightCount)));
         LightIdMap idMap = lightHandler->computeLightIdMap(lightHandler->getLightSources());
         size_t index = 0;
         for (NodePtr light : lightHandler->getLightSources())
@@ -976,12 +959,9 @@ const MslProgram::InputMap& MslProgram::updateUniformsList()
 
         if (arg.type == MTLArgumentTypeTexture)
         {
-            if (HW::ENV_RADIANCE != arg.name.UTF8String && HW::ENV_IRRADIANCE != arg.name.UTF8String)
-            {
-                std::string texture_name = arg.name.UTF8String;
-                InputPtr inputPtr = std::make_shared<Input>(arg.index, MTLDataTypeTexture, -1, EMPTY_STRING);
-                _uniformList[texture_name] = inputPtr;
-            }
+            std::string texture_name = arg.name.UTF8String;
+            InputPtr inputPtr = std::make_shared<Input>(arg.index, MTLDataTypeTexture, -1, EMPTY_STRING);
+            _uniformList[texture_name] = inputPtr;
         }
     }
 
@@ -1192,12 +1172,12 @@ void MslProgram::bindUniformBuffers(id<MTLRenderCommandEncoder> renderCmdEncoder
         }
         if (uniformName == HW::WORLD_INVERSE_MATRIX)
         {
-            memcpy((void*) &data[offset], invWorld.getTranspose().data(), 4 * 4 * sizeof(float));
+            memcpy((void*) &data[offset], invWorld.data(), 4 * 4 * sizeof(float));
             return true;
         }
         if (uniformName == HW::WORLD_INVERSE_TRANSPOSE_MATRIX)
         {
-            memcpy((void*) &data[offset], invTransWorld.getTranspose().data(), 4 * 4 * sizeof(float));
+            memcpy((void*) &data[offset], invTransWorld.data(), 4 * 4 * sizeof(float));
             return true;
         }
         if (uniformName == HW::FRAME)

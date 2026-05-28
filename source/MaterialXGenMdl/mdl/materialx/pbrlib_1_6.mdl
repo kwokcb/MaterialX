@@ -154,6 +154,7 @@ export material mx_dielectric_bsdf(
     color  mxp_tint      = color(1.0),
     float  mxp_ior       = 1.5,
     float2 mxp_roughness = float2(0.0),
+    uniform bool mxp_retroreflective = false [[ anno::unused() ]],
     float3 mxp_normal    = state::normal(),
     float3 mxp_tangent   = state::texture_tangent_u(0),
     uniform core::mx_distribution_type mxp_distribution = core::mx_distribution_type_ggx [[ anno::unused() ]],
@@ -167,15 +168,17 @@ export material mx_dielectric_bsdf(
 ]]
 = let {
     float coatIor = mxp_thinfilm_ior <= 0.0 ? 1.0 : mxp_thinfilm_ior;
-    float grazing_refl = math::max((1.0 - math::average(mxp_roughness)), 0.0);
+    // Fresnel layer does not work well if the base is a diffuse transmission. The energy loss is very high.
+    // Therefore we use a custom curve that approximates the Fresnel effect and does not cause energy loss.
+    // Make sure that IOR of 1.0 results in zero reflectance, independent of the roughness.
     float root_r = (mxp_ior-1)/(mxp_ior+1);
+    float normal_refl = root_r*root_r;
+    float grazing_refl = normal_refl <= 0.0 ? 0.0 : math::max((1.0 - math::average(mxp_roughness)), 0.0);
     bsdf bsdf_R = df::thin_film(
         thickness: mxp_thinfilm_thickness,
         ior: color(coatIor),
-        // fresnel layer has issues if base is a diffuse transmission, use custom curve for now
-        // this will break thin_film but improves standard_surface with diffuse transmission
         base: df::custom_curve_layer(
-            normal_reflectivity: root_r*root_r,
+            normal_reflectivity: normal_refl,
             grazing_reflectivity: grazing_refl,
             weight: mxp_weight,
             layer: df::microfacet_ggx_smith_bsdf(
@@ -231,6 +234,7 @@ export material mx_conductor_bsdf(
     color  mxp_ior        = color(0.18, 0.42, 1.37),
     color  mxp_extinction = color(3.42, 2.35, 1.77),
     float2 mxp_roughness  = float2(0.0),
+    uniform bool mxp_retroreflective = false [[ anno::unused() ]],
     float3 mxp_normal     = state::normal(),
     float3 mxp_tangent    = state::texture_tangent_u(0),
     uniform core::mx_distribution_type mxp_distribution = core::mx_distribution_type_ggx [[ anno::unused() ]],
@@ -275,6 +279,7 @@ export material mx_generalized_schlick_bsdf(
     color  mxp_color90   = color(1.0),
     float  mxp_exponent  = 5.0,
     float2 mxp_roughness = float2(0.05),
+    uniform bool mxp_retroreflective = false [[ anno::unused() ]],
     float3 mxp_normal    = state::normal(),
     float3 mxp_tangent   = state::texture_tangent_u(0),
     uniform core::mx_distribution_type mxp_distribution = core::mx_distribution_type_ggx [[ anno::unused() ]],
@@ -344,7 +349,7 @@ export material mx_subsurface_bsdf(
     color  mxp_color     = color(0.18),
     color  mxp_radius    = color(1.0),
     float  mxp_anisotropy = 0.0,
-    float3 mxp_normal    = state::normal() [[ anno::unused() ]]
+    float3 mxp_normal    = state::normal()
 ) [[ 
     anno::usage( "materialx:bsdf") 
 ]]
@@ -352,7 +357,8 @@ export material mx_subsurface_bsdf(
     // https://blog.selfshadow.com/publications/s2017-shading-course/imageworks/s2017_pbs_imageworks_slides_v2.pdf
     // Phase function eccentricity 'g' has been omitted here since we pass that directly 
     // to anisotropic_vdf(directional_bias: g).
-    color C = math::saturate(mxp_weight) * mxp_color;
+    float w = math::saturate(mxp_weight);
+    color C = mxp_color;
     color albedo = color(4.09712) +
            (4.20863f * C) -
            math::sqrt(
@@ -364,7 +370,7 @@ export material mx_subsurface_bsdf(
     color white = color(1.0, 1.0, 1.0);
     color alpha = (white - albedo_sq) / (white - mxp_anisotropy * albedo_sq);
 
-    color radius_inv = white / math::max(color(0.001), mxp_radius);
+    color radius_inv = white / math::max(0.00000001, mxp_radius);
 
     color sigma_s = alpha * radius_inv;
     color sigma_a = radius_inv - sigma_s;
@@ -374,12 +380,16 @@ export material mx_subsurface_bsdf(
         scattering: df::anisotropic_vdf (
             directional_bias: mxp_anisotropy
         ),
-        scattering_coefficient: sigma_s,
-        absorption_coefficient: sigma_a
+        scattering_coefficient: w * sigma_s,
+        absorption_coefficient: w * sigma_a
     ), 
 
     surface: material_surface(
-        scattering: df::diffuse_transmission_bsdf(tint: white)
+        scattering: df::weighted_layer(
+            weight: w,
+            layer: df::diffuse_transmission_bsdf(tint: white),
+            normal: mxp_normal
+        )
     )
 );
 

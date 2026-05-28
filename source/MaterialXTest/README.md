@@ -33,7 +33,7 @@ Refer to the [test suite documentation](../../resources/Materials/TestSuite/READ
 - GenGlsl.cpp : GLSL shader generation tests which are run when the test tag `[genglsl]` is specified.
 - GenOsl.cpp : OSL shader generation tests which are run when the test tag `[genosl]` is specified.
 - GenMdl.cpp : MDL shader generation tests which are run when the test tag `[genmdl]` is specified.
-- GenMsl.cpp : MSL shader generation tests which are run when the test tag `[genmsl]` is specified. 
+- GenMsl.cpp : MSL shader generation tests which are run when the test tag `[genmsl]` is specified.
 
 Per-language tests will scan MaterialX files in the test suite for input materials.
 
@@ -57,6 +57,7 @@ Per language tests will scan MaterialX files in the test suite for input materia
 When rendering tests are enabled through the `MATERIALX_TEST_RENDER` option, the test suite will generate shader code for each test material and supported language.  Rendering will also be performed in languages for which support libraries have been provided:
 - `GLSL`:
     - OpenGL version 4.0 and later are supported.
+    - Set `MATERIALX_TEST_RENDER_GLSL=OFF` to skip GLSL render tests (e.g. in MacOS environments that only require MSL).
 - `OSL`:
     - Set the following build options to enable OSL support:
         - `MATERIALX_OSL_BINARY_OSLC`: Path to the OSL compiler binary (e.g. `oslc.exe`).
@@ -65,10 +66,9 @@ When rendering tests are enabled through the `MATERIALX_TEST_RENDER` option, the
     - OSL versions 1.12.6 and later are supported.
 - `MDL` :
     - Set the following build options to enable MDL support:
-        - `MATERIALX_MDLC_EXECUTABLE`: Full path to the MDL compiler binary (e.g. `mdlc.exe').
-        - `MATERIALX_MDL_RENDER_EXECUTABLE`: Full path to the binary for render testing.
-    - Optionally, `MATERIALX_MDL_RENDER_ARGUMENTS` can be set to provide command line arguments for non-interactive rendering.
+        - `MATERIALX_MDL_SDK_DIR`: Path to the MDL SDK directory (containing 'include', 'lib', etc.).
     - MDL versions 1.6 and later are supported.
+    - For installations via vcpkg: the core `mdl-sdk` package is sufficient for syntax checks via `mdlc`. The `df_vulkan` test render binary needs the package features `dds`, `openimageio`, and `df-vulkan`.
 - `MSL`:
     - Metal Shading Language (MSL) 2.0 and later are supported.
     - Minimum tested operating system version is macOS Catalina 10.15.7
@@ -82,6 +82,7 @@ When rendering tests are enabled through the `MATERIALX_TEST_RENDER` option, the
 #### HTML Render Comparisons
 - A `tests_to_html` Python script is provided in the [`python/MaterialXTest`](../../python/MaterialXTest) folder, which can be run to generate an HTML file comparing the rendered results in each shading language.
 - Example render comparisons may be found in [commits to the MaterialX repository](https://github.com/AcademySoftwareFoundation/MaterialX/pull/1164), and we encourage developers to post their own results when making changes that have the potential to impact generated shaders.
+- Set `MATERIALX_TEST_REFERENCE_QUALITY=ON` to render the test suite at higher sample counts, reducing sampling noise so that small visual differences across shading languages can be accurately compared.  This is a build-time option and requires a more capable GPU and longer render times than the default.
 
 #### Benchmark Tests
 
@@ -89,6 +90,6 @@ Processing MaterialX documents and generating shaders is an integral part of man
 
 Here is an example of how to run the benchmark test
 
- `MaterialXTest.exe "GenShader: GLSL Performance Test" --benchmark-samples 10` 
- 
+ `MaterialXTest.exe "GenShader: GLSL Performance Test" --benchmark-samples 10`
+
 This will iterate and gather 10 samples of the test case and report low, mean and high timing results.

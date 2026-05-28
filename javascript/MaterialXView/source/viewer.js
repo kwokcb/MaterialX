@@ -4,8 +4,8 @@
 //
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 
 import { prepareEnvTexture, getLightRotation, findLights, registerLights, getUniformValues } from './helper.js'
 import { Group } from 'three';
@@ -36,7 +36,6 @@ export class Scene
     {
         this._scene = new THREE.Scene();
         this._scene.background = new THREE.Color(this.#_backgroundColor);
-        this._scene.background.convertSRGBToLinear();
 
         const aspectRatio = window.innerWidth / window.innerHeight;
         const cameraNearDist = 0.05;
@@ -106,6 +105,15 @@ export class Scene
         }
         scene.add(model);
 
+        // Set up onBeforeRender callbacks so that we can update uniforms per object right before rendering.
+        model.traverse((child) =>
+        {
+            child.onBeforeRender = (_renderer, _scene, camera, _geometry, material, _group) =>
+            {
+                this.updateObjectUniforms(child, material, camera);
+            };
+        })
+
         console.log("- Scene load time: ", performance.now() - geomLoadTime, "ms");
 
         // Always reset controls based on camera for each load. 
@@ -116,7 +124,6 @@ export class Scene
 
         viewer.getMaterial().clearSoloMaterialUI();
         viewer.getMaterial().updateMaterialAssignments(viewer, "");
-        this.setUpdateTransforms();
     }
 
     //
@@ -174,7 +181,7 @@ export class Scene
 
                 if (!child.geometry.attributes.normal)
                 {
-                    var startNormalTime = performance.new();
+                    var startNormalTime = performance.now();
                     child.geometry.computeVertexNormals();
                     normalTime += performance.now() - startNormalTime;
                 }
@@ -233,55 +240,30 @@ export class Scene
         orbitControls.update();
     }
 
-    setUpdateTransforms(val=true)
+    updateObjectUniforms(child, material, camera)
     {
-        this.#_updateTransforms = val;
-    }
+        if (!child || !material || !camera) return;
+        const uniforms = material.uniforms;
+        if (!uniforms) return;
 
-    getUpdateTransforms()
-    {
-        return this.#_updateTransforms;
-    }
+        uniforms.u_worldMatrix.value = child.matrixWorld;
+        uniforms.u_viewProjectionMatrix.value = this.#_viewProjMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 
-    updateTransforms()
-    {
-        // Only update on demand versus continuously.
-        // Call setUpdateTransforms() to trigger an update here.
-        // Required for: scene geometry, camera change and viewport resize. 
-        if (!this.#_updateTransforms)
-        {
-            return;
-        }
-        this.setUpdateTransforms(false);
+        if (uniforms.u_viewPosition)
+            uniforms.u_viewPosition.value = camera.getWorldPosition(this.#_worldViewPos);
 
-        const scene = this.getScene();
-        const camera = this.getCamera();
-        scene.traverse((child) =>
-        {
-            if (child.isMesh)
-            {
-                const uniforms = child.material.uniforms;
-                if (uniforms)
-                {
-                    uniforms.u_worldMatrix.value = child.matrixWorld;
-                    uniforms.u_viewProjectionMatrix.value = this.#_viewProjMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+        if (uniforms.u_worldInverseTransposeMatrix)
+            uniforms.u_worldInverseTransposeMatrix.value =
+                new THREE.Matrix4().setFromMatrix3(this.#_normalMat.getNormalMatrix(child.matrixWorld));
 
-                    if (uniforms.u_viewPosition)
-                        uniforms.u_viewPosition.value = camera.getWorldPosition(this.#_worldViewPos);
-
-                    if (uniforms.u_worldInverseTransposeMatrix)
-                        uniforms.u_worldInverseTransposeMatrix.value =
-                            new THREE.Matrix4().setFromMatrix3(this.#_normalMat.getNormalMatrix(child.matrixWorld));
-                }
-            }
-        });
+        material.uniformsNeedUpdate = true;
     }
 
     /**
      * Update uniforms for all scene objects. This is called once per frame
      * and updates time and frame count uniforms.
      */
-    updateUniforms() {
+    updateTimeUniforms() {
         this._frame++;
 
         const scene = this.getScene();
@@ -296,13 +278,9 @@ export class Scene
                 if (uniforms)
                 {
                     if (uniforms.u_time)
-                    {
                         uniforms.u_time.value = time;
-                    }
                     if (uniforms.u_frame)
-                    {
                         uniforms.u_frame.value = frame;
-                    }
                 }
             }
         });
@@ -437,7 +415,6 @@ export class Scene
             return this.#_backgroundTexture;
         }
         var color = new THREE.Color(this.#_backgroundColor);
-        color.convertSRGBToLinear();
         return color;
     }
 
@@ -472,7 +449,6 @@ export class Scene
     #_normalMat = new THREE.Matrix3();
     #_viewProjMat = new THREE.Matrix4();
     #_worldViewPos = new THREE.Vector3();
-    #_updateTransforms = true;
 
     // Root node of imported scene
     #_rootNode = null;
@@ -867,9 +843,6 @@ export class Material
         // Update scene shader assignments
         this.updateMaterialAssignments(viewer, "");
 
-        // Mark transform update
-        viewer.getScene().setUpdateTransforms();
-
         console.log("Total material time: ", (performance.now() - startTime), "ms");
     }
 
@@ -962,9 +935,10 @@ export class Material
 
         var startUniformUpdate = performance.now();
 
-        // Get shaders and uniform values
-        let vShader = shader.getSourceCode("vertex");
-        let fShader = shader.getSourceCode("pixel");
+        // Get shaders and uniform values, removing version directives
+        // that are already managed by the Three.js runtime.
+        let vShader = shader.getSourceCode("vertex").replace(/^#version\s+.*\n/, '');
+        let fShader = shader.getSourceCode("pixel").replace(/^#version\s+.*\n/, '');
 
         let theScene = viewer.getScene();
         let flipV = theScene.getFlipGeometryV();
@@ -989,6 +963,7 @@ export class Material
             uniforms: uniforms,
             vertexShader: vShader,
             fragmentShader: fShader,
+            glslVersion: THREE.GLSL3,
             transparent: isTransparent,
             blendEquation: THREE.AddEquation,
             blendSrc: THREE.OneMinusSrcAlphaFactor,
@@ -1062,7 +1037,6 @@ export class Material
             }
         }
         viewer.getMaterial().updateMaterialAssignments(viewer, this._soloMaterial);
-        viewer.getScene().setUpdateTransforms();
     }
 
     //
@@ -1137,8 +1111,14 @@ export class Material
                     {
                         continue;
                     }
-                    
-                    // Skip non-input types and anything > 2 levels deep 
+
+                    // Skip elements from the referenced data library
+                    if (currentElem.getActiveSourceUri() !== elem.getDocument().getSourceUri())
+                    {
+                        continue;
+                    }
+
+                    // Skip non-input types and anything > 2 levels deep
                     if (!currentElem.asAInput() || currentElem.getNamePath().split('/').length > 2)
                     {
                         continue;
@@ -1552,7 +1532,7 @@ export class Viewer
         this.materials.push(new Material());
 
         this.fileLoader = new THREE.FileLoader();
-        this.hdrLoader = new RGBELoader();
+        this.hdrLoader = new HDRLoader();
     }
 
     //

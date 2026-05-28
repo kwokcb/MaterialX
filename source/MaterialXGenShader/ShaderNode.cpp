@@ -5,9 +5,11 @@
 
 #include <MaterialXGenShader/ShaderNode.h>
 
+#include <MaterialXGenShader/Exception.h>
 #include <MaterialXGenShader/GenContext.h>
-#include <MaterialXGenShader/ShaderGenerator.h>
 #include <MaterialXGenShader/Util.h>
+
+#include <MaterialXTrace/Tracing.h>
 
 MATERIALX_NAMESPACE_BEGIN
 
@@ -148,6 +150,7 @@ const string ShaderNode::CONSTANT = "constant";
 const string ShaderNode::DOT = "dot";
 const string ShaderNode::IMAGE = "image";
 const string ShaderNode::SURFACESHADER = "surfaceshader";
+const string ShaderNode::BACKSURFACESHADER = "backsurfaceshader";
 const string ShaderNode::BSDF_R = "R";
 const string ShaderNode::BSDF_T = "T";
 const string ShaderNode::TEXTURE2D_GROUPNAME = "texture2d";
@@ -163,6 +166,7 @@ const string ShaderNode::GEOMETRIC_GROUPNAME = "geometric";
 ShaderNode::ShaderNode(const ShaderGraph* parent, const string& name) :
     _parent(parent),
     _name(name),
+    _uniqueId(name),
     _classification(0),
     _impl(nullptr)
 {
@@ -170,6 +174,9 @@ ShaderNode::ShaderNode(const ShaderGraph* parent, const string& name) :
 
 ShaderNodePtr ShaderNode::create(const ShaderGraph* parent, const string& name, const NodeDef& nodeDef, GenContext& context)
 {
+    MX_TRACE_FUNCTION(Tracing::Category::ShaderGen);
+    MX_TRACE_SCOPE(Tracing::Category::ShaderGen, name.c_str());
+
     ShaderNodePtr newNode = std::make_shared<ShaderNode>(parent, name);
 
     const ShaderGenerator& shadergen = context.getShaderGenerator();
@@ -199,14 +206,14 @@ ShaderNodePtr ShaderNode::create(const ShaderGraph* parent, const string& name, 
             if (context.getShaderGenerator().getSyntax().remapEnumeration(portValue, portType, enumNames, enumResult))
             {
                 input = newNode->addInput(port->getName(), enumResult.first);
-                input->setValue(enumResult.second);
+                input->setValue(enumResult.second, false);
             }
             else
             {
                 input = newNode->addInput(port->getName(), portType);
                 if (!portValue.empty())
                 {
-                    input->setValue(port->getResolvedValue());
+                    input->setValue(port->getResolvedValue(), false);
                 }
             }
             if (port->getIsUniform())
@@ -282,14 +289,28 @@ ShaderNodePtr ShaderNode::create(const ShaderGraph* parent, const string& name, 
         {
             newNode->_classification |= Classification::LAYER;
         }
+
+        // Check specifically for the mix node
+        if (nodeDefName == "ND_mix_bsdf")
+        {
+            newNode->_classification |= Classification::MIX;
+        }
     }
     else if (primaryOutput->getType() == Type::EDF)
     {
         newNode->_classification = Classification::EDF | Classification::CLOSURE;
+        if (nodeDefName == "ND_mix_edf")
+        {
+            newNode->_classification |= Classification::MIX;
+        }
     }
     else if (primaryOutput->getType() == Type::VDF)
     {
         newNode->_classification = Classification::VDF | Classification::CLOSURE;
+        if (nodeDefName == "ND_mix_vdf")
+        {
+            newNode->_classification |= Classification::MIX;
+        }
     }
     // Second, check for specific nodes types
     else if (nodeDef.getNodeString() == CONSTANT)

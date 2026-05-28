@@ -17,6 +17,8 @@
 #include <MaterialXCore/Node.h>
 #include <MaterialXCore/Value.h>
 
+#include <MaterialXTrace/Tracing.h>
+
 #include <sstream>
 
 MATERIALX_NAMESPACE_BEGIN
@@ -32,6 +34,16 @@ ShaderGenerator::ShaderGenerator(TypeSystemPtr typeSystem, SyntaxPtr syntax) :
     _typeSystem(typeSystem),
     _syntax(syntax)
 {
+    // Register all graph refactoring passes.
+    registerRefactor(std::make_shared<NodeElisionRefactor>());
+    registerRefactor(std::make_shared<PremultipliedBsdfAddRefactor>());
+    registerRefactor(std::make_shared<DistributeLayerOverMixRefactor>());
+}
+
+void ShaderGenerator::applyDefaultOptions(GenOptions& /*options*/) const
+{
+    // Base implementation sets no additional defaults.
+    // Derived generators override to set target-specific defaults.
 }
 
 void ShaderGenerator::emitScopeBegin(ShaderStage& stage, Syntax::Punctuation punc) const
@@ -106,6 +118,9 @@ void ShaderGenerator::emitFunctionDefinitionParameter(const ShaderPort* shaderPo
 
 void ShaderGenerator::emitFunctionDefinitions(const ShaderGraph& graph, GenContext& context, ShaderStage& stage) const
 {
+    MX_TRACE_FUNCTION(Tracing::Category::ShaderGen);
+    MX_TRACE_SCOPE(Tracing::Category::ShaderGen, graph.getName().c_str());
+
     // Emit function definitions for all nodes in the graph.
     for (ShaderNode* node : graph.getNodes())
     {
@@ -130,6 +145,9 @@ void ShaderGenerator::emitFunctionCall(const ShaderNode& node, GenContext& conte
 
 void ShaderGenerator::emitFunctionCalls(const ShaderGraph& graph, GenContext& context, ShaderStage& stage, uint32_t classification) const
 {
+    MX_TRACE_FUNCTION(Tracing::Category::ShaderGen);
+    MX_TRACE_SCOPE(Tracing::Category::ShaderGen, graph.getName().c_str());
+
     for (ShaderNode* node : graph.getNodes())
     {
         if (!classification || node->hasClassification(classification))
@@ -285,8 +303,21 @@ bool ShaderGenerator::implementationRegistered(const string& name) const
     return _implFactory.classRegistered(name);
 }
 
+ShaderNodeImplPtr ShaderGenerator::createShaderNodeImplForNodeGraph(const NodeGraph& /*nodegraph*/) const
+{
+    return CompoundNode::create();
+}
+
+ShaderNodeImplPtr ShaderGenerator::createShaderNodeImplForImplementation(const Implementation& /*implementation*/) const
+{
+    return SourceCodeNode::create();
+}
+
 ShaderNodeImplPtr ShaderGenerator::getImplementation(const NodeDef& nodedef, GenContext& context) const
 {
+    MX_TRACE_FUNCTION(Tracing::Category::ShaderGen);
+    MX_TRACE_SCOPE(Tracing::Category::ShaderGen, nodedef.getName().c_str());
+
     InterfaceElementPtr implElement = nodedef.getImplementation(getTarget());
     if (!implElement)
     {
@@ -304,10 +335,11 @@ ShaderNodeImplPtr ShaderGenerator::getImplementation(const NodeDef& nodedef, Gen
 
     if (implElement->isA<NodeGraph>())
     {
-        impl = CompoundNode::create();
+        impl = createShaderNodeImplForNodeGraph(*implElement->asA<NodeGraph>());
     }
     else if (implElement->isA<Implementation>())
     {
+        ImplementationPtr implementationElement = implElement->asA<Implementation>();
         if (getColorManagementSystem() && getColorManagementSystem()->hasImplementation(name))
         {
             impl = getColorManagementSystem()->createImplementation(name);
@@ -319,7 +351,7 @@ ShaderNodeImplPtr ShaderGenerator::getImplementation(const NodeDef& nodedef, Gen
         }
         if (!impl)
         {
-            impl = SourceCodeNode::create();
+            impl = createShaderNodeImplForImplementation(*implElement->asA<Implementation>());
         }
     }
     if (!impl)

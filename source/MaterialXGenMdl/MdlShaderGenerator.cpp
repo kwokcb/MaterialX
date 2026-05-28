@@ -11,12 +11,12 @@
 #include <MaterialXGenMdl/Nodes/MaterialNodeMdl.h>
 #include <MaterialXGenMdl/Nodes/SurfaceNodeMdl.h>
 #include <MaterialXGenMdl/Nodes/HeightToNormalNodeMdl.h>
-#include <MaterialXGenMdl/Nodes/BlurNodeMdl.h>
 #include <MaterialXGenMdl/Nodes/ClosureLayerNodeMdl.h>
 #include <MaterialXGenMdl/Nodes/ClosureCompoundNodeMdl.h>
 #include <MaterialXGenMdl/Nodes/CustomNodeMdl.h>
 #include <MaterialXGenMdl/Nodes/ImageNodeMdl.h>
 
+#include <MaterialXGenShader/Exception.h>
 #include <MaterialXGenShader/GenContext.h>
 #include <MaterialXGenShader/Shader.h>
 #include <MaterialXGenShader/ShaderStage.h>
@@ -100,14 +100,6 @@ MdlShaderGenerator::MdlShaderGenerator(TypeSystemPtr typeSystem) :
     // <!-- <surface> -->
     registerImplementation("IM_surface_" + MdlShaderGenerator::TARGET, SurfaceNodeMdl::create);
 
-    // <!-- <blur> -->
-    registerImplementation("IM_blur_float_" + MdlShaderGenerator::TARGET, BlurNodeMdl::create);
-    registerImplementation("IM_blur_color3_" + MdlShaderGenerator::TARGET, BlurNodeMdl::create);
-    registerImplementation("IM_blur_color4_" + MdlShaderGenerator::TARGET, BlurNodeMdl::create);
-    registerImplementation("IM_blur_vector2_" + MdlShaderGenerator::TARGET, BlurNodeMdl::create);
-    registerImplementation("IM_blur_vector3_" + MdlShaderGenerator::TARGET, BlurNodeMdl::create);
-    registerImplementation("IM_blur_vector4_" + MdlShaderGenerator::TARGET, BlurNodeMdl::create);
-
     // <!-- <heighttonormal> -->
     registerImplementation("IM_heighttonormal_vector3_" + MdlShaderGenerator::TARGET, HeightToNormalNodeMdl::create);
 
@@ -131,6 +123,12 @@ MdlShaderGenerator::MdlShaderGenerator(TypeSystemPtr typeSystem) :
     registerImplementation("IM_image_vector2_" + MdlShaderGenerator::TARGET, ImageNodeMdl::create);
     registerImplementation("IM_image_vector3_" + MdlShaderGenerator::TARGET, ImageNodeMdl::create);
     registerImplementation("IM_image_vector4_" + MdlShaderGenerator::TARGET, ImageNodeMdl::create);
+}
+
+void MdlShaderGenerator::applyDefaultOptions(GenOptions& options) const
+{
+    ShaderGenerator::applyDefaultOptions(options);
+    options.distributeLayerOverBsdfMix = true;
 }
 
 ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, GenContext& context) const
@@ -194,15 +192,14 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
     const ShaderGraphOutputSocket* outputSocket = graph.getOutputSocket(0);
     emitString("export material ", stage);
 
-    // Begin shader signature. Note that makeIdentifier() will sanitize the name.
+    // Begin shader signature. Note that the function name is already sanitized.
     string functionName = shader->getName();
-    _syntax->makeIdentifier(functionName, graph.getIdentifierMap());
     setFunctionName(functionName, stage);
     emitLine(functionName, stage, false);
     emitScopeBegin(stage, Syntax::PARENTHESES);
 
     // Emit shader inputs
-    emitShaderInputs(element->getDocument(), stage.getInputBlock(MDL::INPUTS), stage);
+    emitShaderInputs(stage.getInputBlock(MDL::INPUTS), stage);
 
     // End shader signature
     emitScopeEnd(stage);
@@ -228,8 +225,8 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
              inputSocket->getType().getSemantic() == TypeDesc::SEMANTIC_CLOSURE ||
              inputSocket->getType().getSemantic() == TypeDesc::SEMANTIC_MATERIAL))
         {
-            const string& qualifier = inputSocket->isUniform() || inputSocket->getType() == Type::FILENAME 
-                ? uniformPrefix 
+            const string& qualifier = inputSocket->isUniform() || inputSocket->getType() == Type::FILENAME
+                ? uniformPrefix
                 : EMPTY_STRING;
             const string& type = _syntax->getTypeName(inputSocket->getType());
 
@@ -246,6 +243,7 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
 
     // Emit function calls for "root" closure/shader nodes.
     // These will internally emit function calls for any dependent closure nodes upstream.
+    bool rootFunctionCallEmitted = false;
     for (ShaderGraphOutputSocket* socket : graph.getOutputSockets())
     {
         if (socket->getConnection())
@@ -256,6 +254,7 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
                  upstream->hasClassification(ShaderNode::Classification::SHADER)))
             {
                 emitFunctionCall(*upstream, context, stage);
+                rootFunctionCallEmitted = true;
             }
         }
     }
@@ -281,9 +280,9 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
             emitLine("float3 displacement__ = float3(0.0)", stage);
             std::string finalOutput = "mk_color3(0.0)";
             if (outputType == Type::BOOLEAN)
-                finalOutput = result + " ? mk_color3(0.0, 1.0, 0.0) : mk_color3(1.0, 0.0, 0.0)";
+                finalOutput = result + " ? mk_color3(1.0, 1.0, 1.0) : mk_color3(0.0, 0.0, 0.0)";
             else if (outputType == Type::INTEGER)
-                finalOutput = "mk_color3(" + result + " / 100)"; // arbitrary
+                finalOutput = "mk_color3(" + result + ")";
             else if (outputType == Type::FLOAT)
                 finalOutput = "mk_color3(" + result + ")";
             else if (outputType == Type::VECTOR2)
@@ -323,7 +322,15 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
     }
     else
     {
-        emitLine(_syntax->getTypeSyntax(outputType).getName() + " finalOutput__ = " + result, stage);
+        if (rootFunctionCallEmitted)
+        {
+            emitLine(_syntax->getTypeSyntax(outputType).getName() + " finalOutput__ = " + result, stage);
+        }
+        else
+        {
+            // No code has been emitted for "result". Use default material as fallback.
+            emitLine(_syntax->getTypeSyntax(outputType).getName() + " finalOutput__ = material()", stage);
+        }
 
         // End shader body
         emitScopeEnd(stage);
@@ -338,87 +345,42 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
     return shader;
 }
 
-ShaderNodeImplPtr MdlShaderGenerator::getImplementation(const NodeDef& nodedef, GenContext& context) const
+ShaderNodeImplPtr MdlShaderGenerator::createShaderNodeImplForNodeGraph(const NodeGraph& nodegraph) const
 {
-    InterfaceElementPtr implElement = nodedef.getImplementation(getTarget());
-    if (!implElement)
-    {
-        return nullptr;
-    }
-
-    const string& name = implElement->getName();
-
-    // Check if it's created and cached already.
-    ShaderNodeImplPtr impl = context.findNodeImplementation(name);
-    if (impl)
-    {
-        return impl;
-    }
-
-    vector<OutputPtr> outputs = nodedef.getActiveOutputs();
+    vector<OutputPtr> outputs = nodegraph.getActiveOutputs();
     if (outputs.empty())
     {
-        throw ExceptionShaderGenError("NodeDef '" + nodedef.getName() + "' has no outputs defined");
+        throw ExceptionShaderGenError("NodeGraph '" + nodegraph.getName() + "' has no outputs defined");
     }
 
     const TypeDesc outputType = _typeSystem->getType(outputs[0]->getType());
 
-    if (implElement->isA<NodeGraph>())
+    ShaderNodeImplPtr impl;
+    // Use a compound implementation.
+    if (outputType.isClosure())
     {
-        // Use a compound implementation.
-        if (outputType.isClosure())
-        {
-            impl = ClosureCompoundNodeMdl::create();
-        }
-        else
-        {
-            impl = CompoundNodeMdl::create();
-        }
+        return ClosureCompoundNodeMdl::create();
     }
-    else if (implElement->isA<Implementation>())
+    return CompoundNodeMdl::create();
+}
+
+ShaderNodeImplPtr MdlShaderGenerator::createShaderNodeImplForImplementation(const Implementation& implElement) const
+{
+    // When `file` and `function` are provided we consider this node a user node
+    const string file = implElement.getTypedAttribute<string>("file");
+    const string function = implElement.getTypedAttribute<string>("function");
+    // Or, if `sourcecode` is provided we consider this node a user node with inline implementation
+    // inline implementations are not supposed to have replacement markers
+    const string sourcecode = implElement.getTypedAttribute<string>("sourcecode");
+    if ((!file.empty() && !function.empty()) || (!sourcecode.empty() && sourcecode.find("{{") == string::npos))
     {
-        if (getColorManagementSystem() && getColorManagementSystem()->hasImplementation(name))
-        {
-            impl = getColorManagementSystem()->createImplementation(name);
-        }
-        else
-        {
-            // Try creating a new in the factory.
-            impl = _implFactory.create(name);
-        }
-        if (!impl)
-        {
-            // When `file` and `function` are provided we consider this node a user node
-            const string file = implElement->getTypedAttribute<string>("file");
-            const string function = implElement->getTypedAttribute<string>("function");
-            // Or, if `sourcecode` is provided we consider this node a user node with inline implementation
-            // inline implementations are not supposed to have replacement markers
-            const string sourcecode = implElement->getTypedAttribute<string>("sourcecode");
-            if ((!file.empty() && !function.empty()) || (!sourcecode.empty() && sourcecode.find("{{") == string::npos))
-            {
-                impl = CustomCodeNodeMdl::create();
-            }
-            else if (file.empty() && sourcecode.empty())
-            {
-                throw ExceptionShaderGenError("No valid MDL implementation found for '" + name + "'");
-            }
-            else
-            {
-                impl = SourceCodeNodeMdl::create();
-            }
-        }
+        return CustomCodeNodeMdl::create();
     }
-    if (!impl)
+    if (file.empty() && sourcecode.empty())
     {
-        return nullptr;
+        throw ExceptionShaderGenError("No valid MDL implementation found for '" + implElement.getName() + "'");
     }
-
-    impl->initialize(*implElement, context);
-
-    // Cache it.
-    context.addNodeImplementation(name, impl);
-
-    return impl;
+    return SourceCodeNodeMdl::create();
 }
 
 string MdlShaderGenerator::getUpstreamResult(const ShaderInput* input, GenContext& context) const
@@ -700,21 +662,33 @@ ShaderPtr MdlShaderGenerator::createShader(const string& name, ElementPtr elemen
 namespace
 {
 
-void emitInputAnnotations(const MdlShaderGenerator& _this, ConstDocumentPtr, const ShaderPort* variable, ShaderStage& stage)
+void emitInputAnnotations(const MdlShaderGenerator& _this, const ShaderPort* variable, ShaderStage& stage)
 {
     // allows to relate between MaterialX and MDL parameters when looking at the MDL code.
     const std::string mtlxParameterPathAnno = "materialx::core::origin(\"" + variable->getPath() + "\")";
 
     _this.emitLineEnd(stage, false);
     _this.emitLine("[[", stage, false);
-    _this.emitLine("\t" + mtlxParameterPathAnno, stage, false);
+    _this.emitLineBegin(stage);
+    _this.emitString(_this.getSyntax().getIndentation() + mtlxParameterPathAnno, stage);
+    const ShaderGraphInputSocket* input = static_cast<const ShaderGraphInputSocket*>(variable);
+
+    if (input->getConnections().empty())
+    {
+        _this.emitString(",", stage);
+        _this.emitLineEnd(stage, false);
+        _this.emitLineBegin(stage);
+        _this.emitString(_this.getSyntax().getIndentation() + "anno::unused()", stage);
+    }
+
+    _this.emitLineEnd(stage, false);
     _this.emitLineBegin(stage);
     _this.emitString("]]", stage); // line ending follows by caller
 }
 
 } // anonymous namespace
 
-void MdlShaderGenerator::emitShaderInputs(ConstDocumentPtr doc, const VariableBlock& inputs, ShaderStage& stage) const
+void MdlShaderGenerator::emitShaderInputs(const VariableBlock& inputs, ShaderStage& stage) const
 {
     const string uniformPrefix = _syntax->getUniformQualifier() + " ";
     for (size_t i = 0; i < inputs.size(); ++i)
@@ -741,7 +715,7 @@ void MdlShaderGenerator::emitShaderInputs(ConstDocumentPtr doc, const VariableBl
 
         emitLineBegin(stage);
         emitString(qualifier + type + " " + input->getVariable() + " = " + value, stage);
-        emitInputAnnotations(*this, doc, input, stage);
+        emitInputAnnotations(*this, input, stage);
 
         if (i < inputs.size() - 1)
         {
