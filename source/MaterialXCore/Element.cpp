@@ -814,12 +814,9 @@ bool ValueElement::validate(string* message) const
     {
         validateRequire(isA<Input>() || isA<Token>(), res, message, "Only input and token elements support interface names");
         ConstGraphElementPtr graph = getAncestorOfType<GraphElement>();
-        if (graph && graph == getParent())
+        if (getParent() && getParent()->isA<GraphElement>())
         {
-            // This element is a direct child of a graph element, so its
-            // interface name references a value element in the parent scope.
-            ConstElementPtr graphParent = graph->getParent();
-            graph = graphParent ? graphParent->getAncestorOfType<GraphElement>() : nullptr;
+            graph = graph->getParent()->getAncestorOfType<GraphElement>();
         }
         if (graph)
         {
