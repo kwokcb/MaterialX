@@ -87,7 +87,7 @@ OutputPtr PortElement::getConnectedOutput() const
     ConstElementPtr parent = getParent();
     ConstElementPtr scope = parent ? parent->getParent() : nullptr;
 
-    // Look for a nodegraph output.
+    // Look for a nodegraph output. Need to check parent, grandparent and document (root) scope.
     if (hasNodeGraphString())
     {
         NodeGraphPtr nodeGraph = resolveNameReference<NodeGraph>(getNodeGraphString(), scope);
@@ -173,12 +173,14 @@ bool PortElement::validate(string* message) const
         connectedGraph = resolveNameReference<NodeGraph>(nodeGraphString);
         if (!connectedGraph)
         {
-            if (getParent())
+            ConstElementPtr parent = getParent();
+            if (parent)
             {
-                connectedGraph = resolveNameReference<NodeGraph>(nodeGraphString, getParent());
+                connectedGraph = resolveNameReference<NodeGraph>(nodeGraphString, parent);
                 if (!connectedGraph)
                 {
-                    connectedGraph = resolveNameReference<NodeGraph>(nodeGraphString, getParent()->getParent());
+                    ConstElementPtr grandparent = parent->getParent();
+                    connectedGraph = resolveNameReference<NodeGraph>(nodeGraphString, grandparent);
                 }
             }
         }
@@ -226,6 +228,9 @@ bool PortElement::validate(string* message) const
                     getType() + " versus " + output->getType());
             }
         }
+
+        // Check first output. Special case multioutput nodes which are not supposed to have an output
+        // versus nodegraphs which must have an output specified.
         else
         {
             OutputPtr output = nullptr;
@@ -238,6 +243,7 @@ bool PortElement::validate(string* message) const
             else if (connectedGraph)
             {
                 std::vector<OutputPtr> outputs = connectedGraph->getOutputs();
+                validateRequire(!outputs.empty(), res, message, "Nodegraph has no outputs for port connection");
                 if (!outputs.empty())
                 {
                     output = outputs[0];
@@ -341,28 +347,34 @@ InputPtr Input::getInterfaceInput() const
         {
             return graph->getInput(getInterfaceName());
         }
-        if (nodeGraph && !nodeGraph->getNodeDef())
+        if (nodeGraph)
         {
-            InputPtr returnVal = nodeGraph->getInput(interfaceName);
-            if (returnVal)
+            // If this is a functional nodegraph, the input is defined by the nodegraph's nodedef
+            NodeDefPtr nodedef = nodeGraph->getNodeDef();
+            if (nodedef)
             {
-                if (returnVal->hasInterfaceName())
-                {
-                    InputPtr val = returnVal->getInterfaceInput();
-                    if (val)
-                    {
-                        returnVal = val;
-                    }
-                    return returnVal;
-                }
-                else
-                {
-                    return returnVal;
-                }
+                return nodedef->getInput(interfaceName);
             }
+            // Otherwise traverse through interface element connections recursivley.
             else
             {
-                //throw Exception("Interface name cannot be found: '" + interfaceName + "'");
+                InputPtr returnVal = nodeGraph->getInput(interfaceName);
+                if (returnVal)
+                {
+                    if (returnVal->hasInterfaceName())
+                    {
+                        InputPtr val = returnVal->getInterfaceInput();
+                        if (val)
+                        {
+                            returnVal = val;
+                        }
+                        return returnVal;
+                    }
+                    else
+                    {
+                        return returnVal;
+                    }
+                }
             }
         }
     }

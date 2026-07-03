@@ -12,8 +12,6 @@
 #include <MaterialXFormat/XmlIo.h>
 #include <MaterialXFormat/Util.h>
 
-#include <iostream>
-
 namespace mx = MaterialX;
 
 bool isTopologicalOrder(const std::vector<mx::ElementPtr>& elems)
@@ -701,7 +699,7 @@ TEST_CASE("Organization", "[nodegraph]")
     CHECK(nodeGraph->getBackdrops().empty());
 }
 
-TEST_CASE("Nested Nodegraphs", "[nodegraph_nested]")
+TEST_CASE("Nested Nodegraphs", "[nodegraph]")
 {
     mx::DocumentPtr doc = mx::createDocument();
 
@@ -783,7 +781,7 @@ TEST_CASE("Nested Nodegraphs", "[nodegraph_nested]")
     if (!valid)
     {
         std::string xmlString = mx::writeToXmlString(doc);
-        std::cout << xmlString << std::endl;
+        INFO("Graph:\n" + xmlString + "\n");
         INFO("Validation errors:" + errors);
     }
     REQUIRE(valid);
