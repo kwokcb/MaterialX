@@ -41,13 +41,13 @@ def createMermaidGraphFromTraversal(shader, showInputValues):
         # Texture sampling family
         mx_gen_shader.ShaderNode.TEXTURE: "#c27ff8",
         mx_gen_shader.ShaderNode.FILETEXTURE: "#be5ae6",
-        mx_gen_shader.ShaderNode.SAMPLE2D: "#d690f4",
-        mx_gen_shader.ShaderNode.SAMPLE3D: "#ca6fdc",
+        mx_gen_shader.ShaderNode.SAMPLE2D: "#7a558a",
+        mx_gen_shader.ShaderNode.SAMPLE3D: "#7a4485",
 
         # Other utility classes
         mx_gen_shader.ShaderNode.CONSTANT: "#888888",
         mx_gen_shader.ShaderNode.CONDITIONAL: "#e8400d",
-        mx_gen_shader.ShaderNode.GEOMETRIC: "#8533dd",
+        mx_gen_shader.ShaderNode.GEOMETRIC: "#4B0336",
         mx_gen_shader.ShaderNode.DOT: '#e9f5db'
     }
 
@@ -93,10 +93,14 @@ def createMermaidGraphFromTraversal(shader, showInputValues):
         return '#000000' if brightness >= 186 else '#ffffff'
 
     def getClassificationFill(classificationBits):
+        # Strip out texture 
+        classificationBits = classificationBits & ~mx_gen_shader.ShaderNode.TEXTURE
+        returnFill = classificationMap[mx_gen_shader.ShaderNode.TEXTURE]
         for classification, fillColor in classificationMap.items():
-            if classificationBits & classification:
+            if classificationBits & classification:# and (classificationBits & mx_gen_shader.ShaderNode.TEXTURE) == 0:
+                print('Classification fill for ', classificationLabelMap[classification], ' = ', fillColor)
                 return fillColor
-        return defaultFill
+        return returnFill
 
     def getClassificationLabel(classificationBits):
         labels = []
