@@ -67,9 +67,4 @@ ShaderStagePtr Shader::createStage(const string& name, ConstSyntaxPtr syntax)
     return s;
 }
 
-string Shader::createMermaidGraph(bool showInputValues) const
-{
-    return _graph ? _graph->createMermaidGraph(showInputValues) : string();
-}
-
 MATERIALX_NAMESPACE_END

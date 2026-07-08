@@ -14,6 +14,134 @@ import MaterialX.PyMaterialXGenOsl as mx_gen_osl
 import MaterialX.PyMaterialXGenSlang as mx_gen_slang
 import MaterialX.PyMaterialXGenShader as mx_gen_shader
 
+
+def createMermaidGraph(shader, showInputValues):
+    lines = ['graph TB']
+    nodes = shader.getNodes()
+
+    classificationMap = {
+        # Material / shader family (green-blue)
+        mx_gen_shader.ShaderNode.MATERIAL: '#7ccba2',
+        mx_gen_shader.ShaderNode.SHADER: "#0e7865",
+        mx_gen_shader.ShaderNode.SURFACE: '#4f9fc5',
+        mx_gen_shader.ShaderNode.VOLUME: '#3d84b8',
+        mx_gen_shader.ShaderNode.LIGHT: '#2f6fa3',
+        mx_gen_shader.ShaderNode.UNLIT: '#94d2bd',
+
+        # Closure family
+        mx_gen_shader.ShaderNode.CLOSURE: '#f4a261',
+        mx_gen_shader.ShaderNode.BSDF: '#e76f51',
+        mx_gen_shader.ShaderNode.BSDF_R: '#f4c06a',
+        mx_gen_shader.ShaderNode.BSDF_T: '#f2a65a',
+        mx_gen_shader.ShaderNode.EDF: '#f6bd60',
+        mx_gen_shader.ShaderNode.VDF: '#f28482',
+        mx_gen_shader.ShaderNode.LAYER: '#f7a072',
+        mx_gen_shader.ShaderNode.MIX: '#f5b971',
+
+        # Texture sampling family
+        mx_gen_shader.ShaderNode.TEXTURE: "#c27ff8",
+        mx_gen_shader.ShaderNode.FILETEXTURE: "#be5ae6",
+        mx_gen_shader.ShaderNode.SAMPLE2D: "#7a558a",
+        mx_gen_shader.ShaderNode.SAMPLE3D: "#7a4485",
+
+        # Other utility classes
+        mx_gen_shader.ShaderNode.CONSTANT: "#888888",
+        mx_gen_shader.ShaderNode.CONDITIONAL: "#e8400d",
+        mx_gen_shader.ShaderNode.GEOMETRIC: "#4B0336",
+        mx_gen_shader.ShaderNode.DOT: '#e9f5db'
+    }
+
+    classificationLabelMap = {
+        mx_gen_shader.ShaderNode.MATERIAL: 'MATERIAL',
+        mx_gen_shader.ShaderNode.SHADER: 'SHADER',
+        mx_gen_shader.ShaderNode.SURFACE: 'SURFACE',
+        mx_gen_shader.ShaderNode.VOLUME: 'VOLUME',
+        mx_gen_shader.ShaderNode.LIGHT: 'LIGHT',
+        mx_gen_shader.ShaderNode.UNLIT: 'UNLIT',
+        mx_gen_shader.ShaderNode.CLOSURE: 'CLOSURE',
+        mx_gen_shader.ShaderNode.BSDF: 'BSDF',
+        mx_gen_shader.ShaderNode.BSDF_R: 'BSDF_R',
+        mx_gen_shader.ShaderNode.BSDF_T: 'BSDF_T',
+        mx_gen_shader.ShaderNode.EDF: 'EDF',
+        mx_gen_shader.ShaderNode.VDF: 'VDF',
+        mx_gen_shader.ShaderNode.LAYER: 'LAYER',
+        mx_gen_shader.ShaderNode.MIX: 'MIX',
+        mx_gen_shader.ShaderNode.TEXTURE: 'TEXTURE',
+        mx_gen_shader.ShaderNode.FILETEXTURE: 'FILETEXTURE',
+        mx_gen_shader.ShaderNode.SAMPLE2D: 'SAMPLE2D',
+        mx_gen_shader.ShaderNode.SAMPLE3D: 'SAMPLE3D',
+        mx_gen_shader.ShaderNode.CONSTANT: 'CONSTANT',
+        mx_gen_shader.ShaderNode.CONDITIONAL: 'CONDITIONAL',
+        mx_gen_shader.ShaderNode.GEOMETRIC: 'GEOMETRIC',
+        mx_gen_shader.ShaderNode.DOT: 'DOT'
+    }
+
+    defaultFill = '#d9d9d9'
+    strokeColor = "#222222"
+
+    def getTextColor(fillColor):
+        color = fillColor.lstrip('#')
+        if len(color) != 6:
+            return '#000000'
+
+        red = int(color[0:2], 16)
+        green = int(color[2:4], 16)
+        blue = int(color[4:6], 16)
+
+        # Relative luminance approximation for contrast selection.
+        brightness = (0.299 * red) + (0.587 * green) + (0.114 * blue)
+        return '#000000' if brightness >= 186 else '#ffffff'
+
+    def getClassificationFill(classificationBits):
+        # Strip out texture 
+        classificationBits = classificationBits & ~mx_gen_shader.ShaderNode.TEXTURE
+        returnFill = classificationMap[mx_gen_shader.ShaderNode.TEXTURE]
+        for classification, fillColor in classificationMap.items():
+            if classificationBits & classification:# and (classificationBits & mx_gen_shader.ShaderNode.TEXTURE) == 0:
+                print('Classification fill for ', classificationLabelMap[classification], ' = ', fillColor)
+                return fillColor
+        return returnFill
+
+    def getClassificationLabel(classificationBits):
+        labels = []
+        for classification, label in classificationLabelMap.items():
+            if classificationBits & classification:
+                labels.append(label)
+        if labels:
+            return '|'.join(labels)
+        return 'UNKNOWN'
+
+    for node in nodes:
+        nodeId = node.getUniqueId()
+        nodeClassification = node.getClassification()
+        classificationFill = getClassificationFill(nodeClassification)
+        classificationLabel = getClassificationLabel(nodeClassification)
+        textColor = getTextColor(classificationFill)
+        lines.append(f'    {nodeId}["{nodeId} ({classificationLabel})"]')
+        lines.append(f'    style {nodeId} fill:{classificationFill},stroke:{strokeColor},stroke-width:1px,color:{textColor}')
+
+    for node in nodes:
+        nodeId = node.getUniqueId()
+
+        for output in node.getOutputs():
+            for inputPort in output.getConnections():
+                if inputPort:
+                    inputNode = inputPort.getNode()
+                    if inputNode.getUniqueId() != nodeId:
+                        connector = f' --"{output.getName()} --> {inputPort.getName()}"--> '
+                        lines.append(f'    {nodeId}{connector}{inputPort.getNode().getUniqueId()}')
+
+        if showInputValues:
+            for inputPort in node.getInputs():
+                if inputPort:# and not inputPort.getConnection():
+                    valueString = inputPort.getValueString()
+                    if valueString:
+                        lines.append(
+                            f'    {node.getUniqueId()}/{inputPort.getName()}["{inputPort.getName()} = {valueString}"] --> {nodeId}'
+                        )
+
+    return '\n'.join(lines)
+
 def validateCode(sourceCodeFile, codevalidator, codevalidatorArgs):
     if codevalidator:
         cmd = codevalidator.split()
@@ -161,7 +289,7 @@ def main():
                 # Generate a Mermaid graph of the shader graph if requested
                 if opts.graph:
                     graphValues = opts.graphValues == True
-                    mermaidGraph = shader.createMermaidGraph(graphValues)
+                    mermaidGraph = createMermaidGraph(shader, graphValues)
                     mermaidGraph = "```mermaid\n" + mermaidGraph + "\n```"
                     filename = pathPrefix + "/" + shader.getName() + "." + gentarget + ".md"
                     print('--- Wrote Mermaid graph to: ' + filename)
