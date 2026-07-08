@@ -15,10 +15,24 @@ import MaterialX.PyMaterialXGenSlang as mx_gen_slang
 import MaterialX.PyMaterialXGenShader as mx_gen_shader
 
 
-def createMermaidGraph(shader, showInputValues):
-    lines = ['graph TB']
+def createMermaidGraph(shader, orientation='TB', showInputValues=False):
+    '''
+    Generate a Mermaid graph of the shader graph for a given shader.
+    @param shader: The shader to generate a graph for.
+    @param orientation: The orientation of the graph. Can be 'TB' (top to bottom), 'LR' (left to right), 'RL' (right to left), or 'BT' (bottom to top).
+    @param showInputValues: If True, include input values in the graph.
+    @return: A string containing the Mermaid graph.
+    '''
+    lines = ['graph ' + orientation]
     nodes = shader.getNodes()
 
+    # Get input socket list 
+    inputSockets = shader.getInputSockets()
+    inputSocketNames = []
+    for inputSocket in inputSockets:
+        inputSocketNames.append(mx.createValidName(inputSocket.getName()))
+
+    # Color mapper for node classifications
     classificationMap = {
         # Material / shader family (green-blue)
         mx_gen_shader.ShaderNode.MATERIAL: '#7ccba2',
@@ -39,18 +53,19 @@ def createMermaidGraph(shader, showInputValues):
         mx_gen_shader.ShaderNode.MIX: '#f5b971',
 
         # Texture sampling family
-        mx_gen_shader.ShaderNode.TEXTURE: "#c27ff8",
-        mx_gen_shader.ShaderNode.FILETEXTURE: "#be5ae6",
+        mx_gen_shader.ShaderNode.TEXTURE: "#6b5e76",
+        mx_gen_shader.ShaderNode.FILETEXTURE: "#3d174c",
         mx_gen_shader.ShaderNode.SAMPLE2D: "#7a558a",
         mx_gen_shader.ShaderNode.SAMPLE3D: "#7a4485",
 
         # Other utility classes
-        mx_gen_shader.ShaderNode.CONSTANT: "#888888",
+        mx_gen_shader.ShaderNode.CONSTANT: "#787878",
         mx_gen_shader.ShaderNode.CONDITIONAL: "#e8400d",
-        mx_gen_shader.ShaderNode.GEOMETRIC: "#4B0336",
+        mx_gen_shader.ShaderNode.GEOMETRIC: "#4B0349",
         mx_gen_shader.ShaderNode.DOT: '#e9f5db'
     }
 
+    # Label mapper for node classifications
     classificationLabelMap = {
         mx_gen_shader.ShaderNode.MATERIAL: 'MATERIAL',
         mx_gen_shader.ShaderNode.SHADER: 'SHADER',
@@ -76,8 +91,8 @@ def createMermaidGraph(shader, showInputValues):
         mx_gen_shader.ShaderNode.DOT: 'DOT'
     }
 
-    defaultFill = '#d9d9d9'
     strokeColor = "#222222"
+    socketFillColor = "#053333"
 
     def getTextColor(fillColor):
         color = fillColor.lstrip('#')
@@ -98,7 +113,6 @@ def createMermaidGraph(shader, showInputValues):
         returnFill = classificationMap[mx_gen_shader.ShaderNode.TEXTURE]
         for classification, fillColor in classificationMap.items():
             if classificationBits & classification:# and (classificationBits & mx_gen_shader.ShaderNode.TEXTURE) == 0:
-                print('Classification fill for ', classificationLabelMap[classification], ' = ', fillColor)
                 return fillColor
         return returnFill
 
@@ -111,6 +125,7 @@ def createMermaidGraph(shader, showInputValues):
             return '|'.join(labels)
         return 'UNKNOWN'
 
+    # Output nodes with formatting
     for node in nodes:
         nodeId = node.getUniqueId()
         nodeClassification = node.getClassification()
@@ -120,6 +135,7 @@ def createMermaidGraph(shader, showInputValues):
         lines.append(f'    {nodeId}["{nodeId} ({classificationLabel})"]')
         lines.append(f'    style {nodeId} fill:{classificationFill},stroke:{strokeColor},stroke-width:1px,color:{textColor}')
 
+    # Output connections
     for node in nodes:
         nodeId = node.getUniqueId()
 
@@ -133,12 +149,30 @@ def createMermaidGraph(shader, showInputValues):
 
         if showInputValues:
             for inputPort in node.getInputs():
-                if inputPort:# and not inputPort.getConnection():
+                if inputPort:
+                    connectedOutput = inputPort.getConnection()
+                    fullInputPortName = inputPort.getName()
+                    isInputSocket = False
+                    if connectedOutput:
+                        outputName = connectedOutput.getName()
+                        # Test if it's an input socket
+                        if inputSocketNames and outputName in inputSocketNames:
+                            fullInputPortName = f'{outputName}'
+                            isInputSocket = True
+                        else:
+                            fullInputPortName = connectedOutput.getFullName() 
                     valueString = inputPort.getValueString()
                     if valueString:
-                        lines.append(
-                            f'    {node.getUniqueId()}/{inputPort.getName()}["{inputPort.getName()} = {valueString}"] --> {nodeId}'
-                        )
+                        if isInputSocket:
+                            # Fill input sockets (exposed uniforms) with a different color to distinguish them from internal hard-coded shader values
+                            lines.append(
+                                f'    {node.getUniqueId()}/{inputPort.getName()}["{fullInputPortName} = {valueString} [SOCKET]"] --"{inputPort.getName()}"--> {nodeId}'                                
+                            )
+                            lines.append(f'    style {node.getUniqueId()}/{inputPort.getName()} fill:{socketFillColor},stroke:{strokeColor},stroke-width:2px,color:#FFFFFF')
+                        else:
+                            lines.append(
+                                f'    {node.getUniqueId()}/{inputPort.getName()}["{fullInputPortName} = {valueString}"] --"{inputPort.getName()}"--> {nodeId}'
+                            )
 
     return '\n'.join(lines)
 
@@ -289,7 +323,7 @@ def main():
                 # Generate a Mermaid graph of the shader graph if requested
                 if opts.graph:
                     graphValues = opts.graphValues == True
-                    mermaidGraph = createMermaidGraph(shader, graphValues)
+                    mermaidGraph = createMermaidGraph(shader, 'LR', graphValues)
                     mermaidGraph = "```mermaid\n" + mermaidGraph + "\n```"
                     filename = pathPrefix + "/" + shader.getName() + "." + gentarget + ".md"
                     print('--- Wrote Mermaid graph to: ' + filename)

@@ -6,11 +6,27 @@
 #include <PyMaterialX/PyMaterialX.h>
 
 #include <MaterialXGenShader/Shader.h>
+#include <MaterialXGenShader/ShaderGraph.h>
 
 #include <string>
 
 namespace py = pybind11;
 namespace mx = MaterialX;
+
+const std::vector<mx::ShaderNode*>& getShaderNodes(mx::Shader& self)
+{
+    return self.getGraph().getNodes();
+}
+
+const std::vector<mx::ShaderOutput*>& getShaderInputs(mx::Shader& self)
+{
+    return self.getGraph().getInputSockets();
+}
+
+const std::vector<mx::ShaderInput*>& getShaderOutputs(mx::Shader& self)
+{
+    return self.getGraph().getOutputSockets();  
+}
 
 void bindPyShader(py::module& mod)
 {
@@ -22,9 +38,11 @@ void bindPyShader(py::module& mod)
         .def("getName", &mx::Shader::getName)
         .def("hasStage", &mx::Shader::hasStage)
         .def("numStages", &mx::Shader::numStages)
-        .def("getStage", static_cast<mx::ShaderStage& (mx::Shader::*)(size_t)>(&mx::Shader::getStage), py::return_value_policy::reference)
-        .def("getStage", static_cast<mx::ShaderStage& (mx::Shader::*)(const std::string&)>(&mx::Shader::getStage), py::return_value_policy::reference)
-        .def("getNodes", [](mx::Shader& self) -> const std::vector<mx::ShaderNode*>&{ return self.getGraph().getNodes(); }, py::return_value_policy::reference)
+        .def("getStage", static_cast<mx::ShaderStage & (mx::Shader::*)(size_t)>(&mx::Shader::getStage), py::return_value_policy::reference)
+        .def("getStage", static_cast<mx::ShaderStage & (mx::Shader::*)(const std::string&)>(&mx::Shader::getStage), py::return_value_policy::reference)
+        .def("getNodes", &getShaderNodes, py::return_value_policy::reference)
+        .def("getInputSockets", &getShaderInputs, py::return_value_policy::reference)   
+        .def("getOutputSockets", &getShaderOutputs, py::return_value_policy::reference)
         .def("getSourceCode", &mx::Shader::getSourceCode)
         .def("hasAttribute", &mx::Shader::hasAttribute)
         .def("getAttribute", &mx::Shader::getAttribute)
