@@ -1388,7 +1388,7 @@ void Viewer::loadDocument(const mx::FilePath& filename, const std::string& buffe
             doc->flattenSubgraphs();
             for (mx::NodeGraphPtr graph : doc->getNodeGraphs())
             {
-                if (graph->getActiveSourceUri() == doc->getActiveSourceUri())
+                if (graph->belongsToContentDocument())
                 {
                     graph->flattenSubgraphs();
                 }
