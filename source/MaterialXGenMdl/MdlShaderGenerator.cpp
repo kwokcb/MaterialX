@@ -52,11 +52,13 @@ const string MDL_VERSION_1_7 = "1.7";
 const string MDL_VERSION_1_8 = "1.8";
 const string MDL_VERSION_1_9 = "1.9";
 const string MDL_VERSION_1_10 = "1.10";
+const string MDL_VERSION_1_11 = "1.11";
 const string MDL_VERSION_SUFFIX_1_6 = "1_6";
 const string MDL_VERSION_SUFFIX_1_7 = "1_7";
 const string MDL_VERSION_SUFFIX_1_8 = "1_8";
 const string MDL_VERSION_SUFFIX_1_9 = "1_9";
 const string MDL_VERSION_SUFFIX_1_10 = "1_10";
+const string MDL_VERSION_SUFFIX_1_11 = "1_11";
 
 } // anonymous namespace
 
@@ -125,6 +127,12 @@ MdlShaderGenerator::MdlShaderGenerator(TypeSystemPtr typeSystem) :
     registerImplementation("IM_image_vector4_" + MdlShaderGenerator::TARGET, ImageNodeMdl::create);
 }
 
+void MdlShaderGenerator::applyDefaultOptions(GenOptions& options) const
+{
+    ShaderGenerator::applyDefaultOptions(options);
+    options.distributeLayerOverBsdfMix = true;
+}
+
 ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, GenContext& context) const
 {
     // For MDL we cannot cache node implementations between generation calls,
@@ -186,9 +194,8 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
     const ShaderGraphOutputSocket* outputSocket = graph.getOutputSocket(0);
     emitString("export material ", stage);
 
-    // Begin shader signature. Note that makeIdentifier() will sanitize the name.
+    // Begin shader signature. Note that the function name is already sanitized.
     string functionName = shader->getName();
-    _syntax->makeIdentifier(functionName, graph.getIdentifierMap());
     setFunctionName(functionName, stage);
     emitLine(functionName, stage, false);
     emitScopeBegin(stage, Syntax::PARENTHESES);
@@ -238,6 +245,7 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
 
     // Emit function calls for "root" closure/shader nodes.
     // These will internally emit function calls for any dependent closure nodes upstream.
+    bool rootFunctionCallEmitted = false;
     for (ShaderGraphOutputSocket* socket : graph.getOutputSockets())
     {
         if (socket->getConnection())
@@ -248,6 +256,7 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
                  upstream->hasClassification(ShaderNode::Classification::SHADER)))
             {
                 emitFunctionCall(*upstream, context, stage);
+                rootFunctionCallEmitted = true;
             }
         }
     }
@@ -273,9 +282,9 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
             emitLine("float3 displacement__ = float3(0.0)", stage);
             std::string finalOutput = "mk_color3(0.0)";
             if (outputType == Type::BOOLEAN)
-                finalOutput = result + " ? mk_color3(0.0, 1.0, 0.0) : mk_color3(1.0, 0.0, 0.0)";
+                finalOutput = result + " ? mk_color3(1.0, 1.0, 1.0) : mk_color3(0.0, 0.0, 0.0)";
             else if (outputType == Type::INTEGER)
-                finalOutput = "mk_color3(" + result + " / 100)"; // arbitrary
+                finalOutput = "mk_color3(" + result + ")";
             else if (outputType == Type::FLOAT)
                 finalOutput = "mk_color3(" + result + ")";
             else if (outputType == Type::VECTOR2)
@@ -315,7 +324,15 @@ ShaderPtr MdlShaderGenerator::generate(const string& name, ElementPtr element, G
     }
     else
     {
-        emitLine(_syntax->getTypeSyntax(outputType).getName() + " finalOutput__ = " + result, stage);
+        if (rootFunctionCallEmitted)
+        {
+            emitLine(_syntax->getTypeSyntax(outputType).getName() + " finalOutput__ = " + result, stage);
+        }
+        else
+        {
+            // No code has been emitted for "result". Use default material as fallback.
+            emitLine(_syntax->getTypeSyntax(outputType).getName() + " finalOutput__ = material()", stage);
+        }
 
         // End shader body
         emitScopeEnd(stage);
@@ -737,10 +754,13 @@ void MdlShaderGenerator::emitMdlVersionNumber(GenContext& context, ShaderStage& 
         case GenMdlOptions::MdlVersion::MDL_1_9:
             emitString(MDL_VERSION_1_9, stage);
             break;
-        default:
-            // GenMdlOptions::MdlVersion::MDL_1_10
-            // GenMdlOptions::MdlVersion::MDL_LATEST
+        case GenMdlOptions::MdlVersion::MDL_1_10:
             emitString(MDL_VERSION_1_10, stage);
+            break;
+        default:
+            // GenMdlOptions::MdlVersion::MDL_1_11
+            // GenMdlOptions::MdlVersion::MDL_LATEST
+            emitString(MDL_VERSION_1_11, stage);
             break;
     }
     emitLineEnd(stage, true);
@@ -761,10 +781,12 @@ const string& MdlShaderGenerator::getMdlVersionFilenameSuffix(GenContext& contex
             return MDL_VERSION_SUFFIX_1_8;
         case GenMdlOptions::MdlVersion::MDL_1_9:
             return MDL_VERSION_SUFFIX_1_9;
-        default:
-            // GenMdlOptions::MdlVersion::MDL_1_10
-            // GenMdlOptions::MdlVersion::MDL_LATEST
+        case GenMdlOptions::MdlVersion::MDL_1_10:
             return MDL_VERSION_SUFFIX_1_10;
+        default:
+            // GenMdlOptions::MdlVersion::MDL_1_11
+            // GenMdlOptions::MdlVersion::MDL_LATEST
+            return MDL_VERSION_SUFFIX_1_11;
     }
 }
 

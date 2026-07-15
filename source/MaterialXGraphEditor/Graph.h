@@ -51,15 +51,30 @@ class MenuItem
 // Based on the Link struct from ImGui Node Editor blueprints-examples.cpp
 struct Link
 {
-    Link(int id, int startAttr, int endAttr) :
+    Link(int id, int startAttr, int endAttr, bool invalid = false) :
         _id(id),
         _startAttr(startAttr),
-        _endAttr(endAttr)
+        _endAttr(endAttr),
+        _invalid(invalid)
     {
     }
 
     int _id;
     int _startAttr, _endAttr;
+    bool _invalid;
+};
+
+// Describes a single invalid connection detected by core validation.
+struct LinkDiagnostic
+{
+    int nodeId = -1;            // UiNode ID; -1 when the error is in a nested nodegraph
+    std::string nodeName;
+    std::string inputName;
+    std::string inputType;
+    std::string outputType;     // resolved upstream type, best-effort, for display only
+    std::string message;        // message returned by Element::validate()
+    std::string graphPath;      // empty = top-level; otherwise the containing nodegraph name
+    mx::NodeGraphPtr nodeGraph; // nullptr = top-level; navigate here on click
 };
 
 // The UI state associated with a graph level (document or nodegraph).
@@ -92,7 +107,8 @@ class Graph
           const mx::FileSearchPath& searchPath,
           const mx::FilePathVec& libraryFolders,
           int viewWidth,
-          int viewHeight);
+          int viewHeight,
+          float previewWidth);
     ~Graph() = default;
 
     mx::DocumentPtr loadDocument(const mx::FilePath& filename);
@@ -126,6 +142,17 @@ class Graph
 
     // Connect links via connected nodes in UiNodePtr
     void linkGraph();
+
+    // Walk all NodeGraph elements in _graphDoc and append invalid-connection diagnostics.
+    void scanNestedGraphDiagnostics();
+
+    // If the given connected input fails core validation, append a diagnostic and return true.
+    bool addInvalidInputDiagnostic(mx::InputPtr input, const std::string& nodeName,
+                                   int uiNodeId, const std::string& graphPath,
+                                   mx::NodeGraphPtr ng);
+
+    // Best-effort resolution of the upstream output type feeding an input (for display only).
+    std::string resolveUpstreamOutputType(mx::InputPtr input) const;
 
     // Connect all links via the graph editor library
     void connectLinks();
@@ -181,6 +208,9 @@ class Graph
     // account for input/output UiNodes with same names as MaterialX nodes
     int findNode(const std::string& name, const std::string& type);
 
+    // Return the node position of the upstream connection from the given input.
+    int findUpstreamNode(mx::InputPtr input);
+
     // Add node to graphNodes based on nodedef information
     void addNode(const std::string& category, const std::string& name, const std::string& type);
 
@@ -195,6 +225,9 @@ class Graph
     // Create an edge between two nodes if it doesn't already exist.
     // Returns true if the edge was created, false if invalid or already exists.
     bool createEdge(UiNodePtr upNode, UiNodePtr downNode, mx::InputPtr connectingInput);
+
+    // Create an edge from an output element to its connected upstream node.
+    void createEdgeForOutput(mx::OutputPtr output);
 
     // Remove node edge based on connecting input
     void removeEdge(int downNode, int upNode, UiPinPtr pin);
@@ -264,6 +297,35 @@ class Graph
     void initializeGraph();
 
     void showHelp() const;
+
+    // A compile-time constant member variable that corresponds to the function below. Defined in header as visibility is desirable here.
+    static constexpr char HELP_MARKER_TEXT[] = "(?)";
+    // Static helper function to draw a marker via ImGui which shows a tooltip when hovered
+    static void drawHelpMarker(const char* content);
+
+    // Static helper function to display tooltips for headers in an ImGui table
+    template <std::size_t N> static void drawTableHeadersRowWithTooltips(const std::array<const char*, N>& tooltips)
+    {
+        const int columnCount = ImGui::TableGetColumnCount();
+        if (columnCount == 0 || columnCount != N)
+            return; // Given array size should match number of columns in table
+
+        ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+        for (int col = 0; col < columnCount; ++col)
+        {
+            if (!ImGui::TableSetColumnIndex(col))
+                continue;                                       // Do not draw if column is not visible
+            ImGui::TableHeader(ImGui::TableGetColumnName(col)); // Header name
+
+            std::string colTooltip = tooltips[col];
+            if (!colTooltip.empty() && ImGui::IsItemHovered())
+            {
+                ImGui::BeginTooltip();
+                ImGui::TextUnformatted(tooltips[col]);
+                ImGui::EndTooltip();
+            }
+        }
+    }
 
   private:
     mx::StringVec _geomFilter;
@@ -344,8 +406,16 @@ class Graph
     // Layout engine
     Layout _layout;
 
+    // Preview area size
+    float _previewSize;
+
     // Options
     bool _saveNodePositions;
-};
 
+    // Diagnostic entries collected by linkGraph() for invalid connections.
+    std::vector<LinkDiagnostic> _diagnostics;
+
+    // Current height of the diagnostic panel; adjusted by the resize handle.
+    float _diagPanelHeight = 120.f;
+};
 #endif

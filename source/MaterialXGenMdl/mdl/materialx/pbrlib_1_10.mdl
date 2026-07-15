@@ -152,7 +152,7 @@ export material mx_sheen_bsdf(
 );
 
 // helper to compute ior for generalized_schlick
-color mx_f0_to_ior(color F0)
+export color mx_f0_to_ior(color F0)
 {
     float3 sqrtF0 = math::sqrt(math::clamp(float3(F0), 0.01, 0.99));
     return color((float3(1.0) + sqrtF0) / (float3(1.0) - sqrtF0));
@@ -165,6 +165,7 @@ export material mx_generalized_schlick_bsdf(
     color  mxp_color90   = color(1.0),
     float  mxp_exponent  = 5.0,
     float2 mxp_roughness = float2(0.05),
+    uniform bool mxp_retroreflective = false [[ anno::unused() ]],
     float3 mxp_normal    = state::normal(),
     float3 mxp_tangent   = state::texture_tangent_u(0),
     uniform core::mx_distribution_type mxp_distribution = core::mx_distribution_type_ggx [[ anno::unused() ]],

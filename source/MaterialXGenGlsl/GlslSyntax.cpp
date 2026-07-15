@@ -299,9 +299,11 @@ GlslSyntax::GlslSyntax(TypeSystemPtr typeSystem) :
         Type::VDF,
         std::make_shared<AggregateTypeSyntax>(
             this,
-            "BSDF",
-            "BSDF(vec3(0.0),vec3(1.0))",
-            EMPTY_STRING));
+            "VDF",
+            "VDF(vec3(0.0),vec3(1.0))",
+            EMPTY_STRING,
+            EMPTY_STRING,
+            "struct VDF { vec3 response; vec3 throughput; };"));
 
     registerTypeSyntax(
         Type::SURFACESHADER,
@@ -352,11 +354,6 @@ GlslSyntax::GlslSyntax(TypeSystemPtr typeSystem) :
             EMPTY_STRING,
             "surfaceshader",
             "#define material surfaceshader"));
-}
-
-bool GlslSyntax::typeSupported(const TypeDesc* type) const
-{
-    return *type != Type::STRING;
 }
 
 bool GlslSyntax::remapEnumeration(const string& value, TypeDesc type, const string& enumNames, std::pair<TypeDesc, ValuePtr>& result) const

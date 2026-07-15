@@ -80,9 +80,8 @@ ShaderPtr OslShaderGenerator::generate(const string& name, ElementPtr element, G
         emitString("shader ", stage);
     }
 
-    // Begin shader signature. Note that makeIdentifier() will sanitize the name.
+    // Begin shader signature. Note that the function name is already sanitized.
     string functionName = shader->getName();
-    _syntax->makeIdentifier(functionName, graph.getIdentifierMap());
     setFunctionName(functionName, stage);
     emitLine(functionName, stage, false);
 
@@ -319,10 +318,10 @@ void OslShaderGenerator::emitShaderInputs(const VariableBlock& inputs, ShaderSta
         { "Pworld", "P" },
         { "Nobject", "transform(\"object\", N)" },
         { "Nworld", "N" },
-        { "Tobject", "transform(\"object\", dPdu)" },
-        { "Tworld", "dPdu" },
-        { "Bobject", "transform(\"object\", dPdv)" },
-        { "Bworld", "dPdv" },
+        { "Tobject", "normalize(transform(\"object\", dPdu))" },
+        { "Tworld", "normalize(dPdu)" },
+        { "Bobject", "normalize(cross(transform(\"object\", N), transform(\"object\", dPdu)))" },
+        { "Bworld", "normalize(cross(N, dPdu))" },
         { "UV0", "{u,v}" },
         { "Vworld", "I" }
     };
