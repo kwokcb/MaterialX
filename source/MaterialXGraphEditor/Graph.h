@@ -180,7 +180,7 @@ class Graph
     void setPinColor();
 
     // Based on the pin icon function in the ImGui Node Editor blueprints-example.cpp
-    void drawPinIcon(const std::string& type, bool connected, int alpha, float xOffset = 0.0f);
+    void drawPinIcon(const std::string& type, bool connected, int alpha, float xOffset = 0.0f, bool isOutput = false);
 
     UiPinPtr getPin(ed::PinId id);
     void drawInputPin(UiPinPtr pin);

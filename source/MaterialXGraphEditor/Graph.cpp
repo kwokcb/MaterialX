@@ -25,8 +25,8 @@ const ImVec2 DEFAULT_NODE_SIZE = ImVec2(138, 116);
 const int DEFAULT_ALPHA = 255;
 const int FILTER_ALPHA = 50;
 const float BASE_UI_FONT_SIZE = 18.0f;
-const float BASE_PIN_ICON_SIZE = 36.0f;
-const float MIN_PIN_ICON_SIZE = 20.0f;
+const float BASE_PIN_ICON_SIZE = 18.0f;
+const float MIN_PIN_ICON_SIZE = 18.0f;
 
 const std::array<std::string, 22> NODE_GROUP_ORDER = {
     "texture2d",
@@ -1929,45 +1929,39 @@ UiPinPtr Graph::getPin(ed::PinId pinId)
     return nullPin;
 }
 
-void Graph::drawPinIcon(const std::string& type, bool connected, int alpha, float xOffset)
+void Graph::drawPinIcon(const std::string& type, bool connected, int alpha, float xOffset, bool isOutput)
 {
     ImColor color = ImColor(0, 0, 0, 255);
     if (_pinColor.find(type) != _pinColor.end())
-    {
         color = _pinColor[type];
-    }
-
     color.Value.w = alpha / 255.0f;
 
     const float iconSize = std::max(MIN_PIN_ICON_SIZE, BASE_PIN_ICON_SIZE * getUiScaleFromFont());
 
-    // Draw a plain circle directly via the draw list — no external library needed,
-    // and no directional arrow is rendered.
     ImVec2 iconMin = ImGui::GetCursorScreenPos() + ImVec2(xOffset, 0.0f);
     ImVec2 iconMax = iconMin + ImVec2(iconSize, iconSize);
-    ImVec2 center  = (iconMin + iconMax) * 0.5f;
-    const float radius       = iconSize * 0.25f;
+    ImVec2 center = (iconMin + iconMax) * 0.5f;
+    const float radius = iconSize * 0.25f;
     const float outlineScale = iconSize / BASE_PIN_ICON_SIZE;
-    const int   segments     = 12 + static_cast<int>(2 * outlineScale);
-    ImDrawList* drawList     = ImGui::GetWindowDrawList();
+    const int segments = 12 + static_cast<int>(2 * outlineScale);
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
 
     if (connected)
-    {
         drawList->AddCircleFilled(center, radius, ImColor(color));
-    }
     else
     {
         drawList->AddCircleFilled(center, radius, ImColor(32, 32, 32, alpha));
         drawList->AddCircle(center, radius, ImColor(color), segments, 2.0f * outlineScale);
     }
 
-    ImGui::Dummy(ImVec2(iconSize, iconSize));
+    // Reserve dummy space only for input pins (they sit inside the node).
+    // Output pins protrude outside and must not affect layout width.
+    float dummyWidth = 0.0f;
+    if (!isOutput)
+        dummyWidth = (xOffset < 0.0f) ? std::max(0.0f, iconSize + xOffset) : iconSize;
+    ImGui::Dummy(ImVec2(dummyWidth, iconSize));
 
-    if (xOffset != 0.0f)
-    {
-        // Override pin bounds so hover/click area and link endpoint match the shifted icon.
-        ed::PinRect(iconMin, iconMax);
-    }
+    ed::PinRect(iconMin, iconMax);
 }
 
 void Graph::buildGroupNode(UiNodePtr node)
@@ -2034,38 +2028,51 @@ bool Graph::readOnly()
 
 void Graph::drawOutputPins(UiNodePtr node, const std::string& longestInputLabel)
 {
-    std::string longestLabel = longestInputLabel;
+    // 1. Find the widest label among input and output pins.
+    float maxLabelWidth = ImGui::CalcTextSize(longestInputLabel.c_str()).x;
     for (UiPinPtr pin : node->getOutputPins())
     {
-        if (pin->getName().size() > longestLabel.size())
-            longestLabel = pin->getName();
+        float w = ImGui::CalcTextSize(pin->getName().c_str()).x;
+        if (w > maxLabelWidth) maxLabelWidth = w;
     }
 
-    // Create output pins with extra right padding
-    const float outputPinExtraPad = 20.0f * getUiScaleFromFont();
+    // Content width = max label width (paddings are handled by the editor)
+    const float contentWidth = maxLabelWidth;
+
     const float iconSize = std::max(MIN_PIN_ICON_SIZE, BASE_PIN_ICON_SIZE * getUiScaleFromFont());
-    const float pinOffset = ed::GetStyle().NodePadding.z + iconSize * 0.5f;
-    float nodeWidth = ImGui::CalcTextSize(longestLabel.c_str()).x + outputPinExtraPad;
+    const float rightPadding = ed::GetStyle().NodePadding.z;
+
+    // 2. Draw each output pin.
     for (UiPinPtr pin : node->getOutputPins())
     {
-        const float indent = nodeWidth - ImGui::CalcTextSize(pin->getName().c_str()).x;
-        ImGui::Indent(indent);
+        float textWidth = ImGui::CalcTextSize(pin->getName().c_str()).x;
+
+        // Indent so that text ends at the right edge of the content area.
+        const float indent = contentWidth - textWidth;
+        if (indent > 0) ImGui::Indent(indent);
         ImGui::TextUnformatted(pin->getName().c_str());
+        if (indent > 0) ImGui::Unindent(indent);
+
+        // The cursor is now at the right edge of the text.
         ImGui::SameLine();
+
+        // Offset the icon so its center lands on the node's right edge.
+        // Node's right edge = contentWidth + rightPadding.
+        // We want icon center = contentWidth + rightPadding.
+        // Icon left = center - iconSize/2.
+        // Cursor is at contentWidth, so xOffset = (contentWidth + rightPadding - iconSize/2) - contentWidth
+        // = rightPadding - iconSize/2.
+        const float pinOffset = rightPadding - iconSize * 0.5f;
 
         ed::BeginPin(pin->getPinId(), ed::PinKind::Output);
         bool connected = pin->getConnected();
         if (!_pinFilterType.empty())
-        {
-            drawPinIcon(pin->getType(), connected, _pinFilterType == pin->getType() ? DEFAULT_ALPHA : FILTER_ALPHA, pinOffset);
-        }
+            drawPinIcon(pin->getType(), connected,
+                _pinFilterType == pin->getType() ? DEFAULT_ALPHA : FILTER_ALPHA,
+                pinOffset, true);   // isOutput = true
         else
-        {
-            drawPinIcon(pin->getType(), connected, DEFAULT_ALPHA, pinOffset);
-        }
-
+            drawPinIcon(pin->getType(), connected, DEFAULT_ALPHA, pinOffset, true);
         ed::EndPin();
-        ImGui::Unindent(indent);
     }
 }
 
